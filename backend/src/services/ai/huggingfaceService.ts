@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { config } from '../../config';
+import { config } from '../../config/index';
 
 interface ToneAnalysis {
   professional: number;
@@ -22,35 +22,68 @@ class HuggingFaceService {
   }
 
   async analyzeSentiment(text: string): Promise<number> {
+    // Ensure API key is configured
+    if (!this.apiKey) {
+      throw new Error('Hugging Face API key is not configured. Please set HUGGINGFACE_API_KEY in your environment variables.');
+    }
+
     try {
+      // Use a verified working RoBERTa sentiment model
       const response = await axios.post(
-        `${this.baseURL}/cardiffnlp/twitter-roberta-base-sentiment-latest`,
+        `${this.baseURL}/cardiffnlp/twitter-roberta-base-sentiment`,
         { inputs: text },
         {
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json',
           },
+          timeout: 15000, // Increased timeout
         }
       );
 
-      const results = response.data[0] as SentimentResult[];
+      // Handle nested array response structure
+      const rawResults = response.data;
+      const results = Array.isArray(rawResults[0]) ? rawResults[0] : rawResults;
       
-      // Convert sentiment labels to scores
-      let sentimentScore = 0.5; // neutral default
+      // Convert RoBERTa sentiment labels to scores
+      // This model returns: LABEL_0 (negative), LABEL_1 (neutral), LABEL_2 (positive)
+      // Find the label with the highest confidence score
+      let highestScore = 0;
+      let dominantLabel = 'LABEL_1'; // default to neutral
       
       for (const result of results) {
-        if (result.label === 'LABEL_2') { // positive
-          sentimentScore = 0.5 + (result.score * 0.5);
-        } else if (result.label === 'LABEL_0') { // negative
-          sentimentScore = 0.5 - (result.score * 0.5);
+        if (result.score > highestScore) {
+          highestScore = result.score;
+          dominantLabel = result.label;
         }
+      }
+      
+      // Convert dominant label to sentiment score
+      let sentimentScore = 0.5; // neutral default
+      if (dominantLabel === 'LABEL_2') { // positive
+        sentimentScore = 0.5 + (highestScore * 0.5);
+      } else if (dominantLabel === 'LABEL_0') { // negative
+        sentimentScore = 0.5 - (highestScore * 0.5);
+      } else { // neutral (LABEL_1)
+        sentimentScore = 0.5;
       }
 
       return Math.max(0, Math.min(1, sentimentScore));
-    } catch (error) {
-      console.error('Hugging Face sentiment analysis error:', error);
-      return 0.5; // neutral fallback
+    } catch (error: any) {
+      // Log specific error details for debugging
+      if (error.response?.status === 404) {
+        console.error('❌ Hugging Face model not found (404). Model may not exist or be available.');
+        throw new Error('Hugging Face sentiment model not found. Please check the model name.');
+      } else if (error.response?.status === 401) {
+        console.error('❌ Hugging Face API authentication failed. Check your API key.');
+        throw new Error('Hugging Face API authentication failed. Please check your API key.');
+      } else if (error.response?.status === 429) {
+        console.error('❌ Hugging Face API rate limit exceeded. Please try again later.');
+        throw new Error('Hugging Face API rate limit exceeded. Please try again later.');
+      } else {
+        console.error('❌ Hugging Face sentiment analysis error:', error.message);
+        throw new Error(`Hugging Face sentiment analysis failed: ${error.message}`);
+      }
     }
   }
 

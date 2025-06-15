@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Hash, Lock, Users, Paperclip, Smile, AtSign, MessageSquare, Upload, Menu } from 'lucide-react';
+import { Send, Hash, Lock, Users, Paperclip, Smile, AtSign, MessageSquare, Upload, Menu, FileText, Sparkles } from 'lucide-react';
 import EmojiPicker from 'emoji-picker-react';
 import { useAppStore } from '../store/appStore';
 import { apiClient } from '../lib/api';
@@ -13,6 +13,10 @@ import { MessageRenderer } from './MessageRenderer';
 import { parseMentions } from '../utils/mentionUtils';
 import type { UploadedFile } from '../lib/fileUploadService';
 import { fileUploadService } from '../lib/fileUploadService';
+import ToneImpactMeter from './ToneImpactMeter';
+import AutoReplyComposer from './AutoReplyComposer';
+import MeetingNotesGenerator from './MeetingNotesGenerator';
+import ErrorBoundary from './ErrorBoundary';
 
 function MessagingArea() {  const { 
     currentChannel, 
@@ -40,6 +44,17 @@ function MessagingArea() {  const {
   // Thread state
   const [showThreadSidebar, setShowThreadSidebar] = useState(false);
   const [selectedThreadMessage, setSelectedThreadMessage] = useState<any>(null);
+  const [threadAutoReply, setThreadAutoReply] = useState<string>('');
+
+  // Message tabs state
+  const [activeTab, setActiveTab] = useState<'messages' | 'pinned'>('messages');
+  const [pinnedItems, setPinnedItems] = useState<any[]>([]);
+  const [loadingPinned, setLoadingPinned] = useState(false);
+
+  // AI Features state
+  const [showAutoReply, setShowAutoReply] = useState<string | null>(null); // Message ID for auto-reply
+  const [showMeetingNotes, setShowMeetingNotes] = useState(false);
+  const [autoReplySelectedMessage, setAutoReplySelectedMessage] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<number>(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -120,6 +135,130 @@ function MessagingArea() {  const {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Load pinned messages
+  const loadPinnedMessages = async () => {
+    if (!currentChannel) return;
+    
+    try {
+      setLoadingPinned(true);
+      console.log('🔍 Loading pinned messages for channel:', currentChannel._id);
+      const response = await apiClient.getPinnedMessages(currentChannel._id);
+      console.log('📌 Pinned messages response:', response);
+      
+      // Handle different response formats
+      let pinnedMessages = [];
+      if (response.pinnedMessages) {
+        // Backend returns { pinnedMessages: [...] }
+        pinnedMessages = response.pinnedMessages;
+      } else if (response.messages) {
+        // Backend returns { messages: [...] }
+        pinnedMessages = response.messages;
+      } else if (Array.isArray(response)) {
+        // Backend returns array directly
+        pinnedMessages = response;
+      }
+      
+      console.log('📌 Setting pinned items:', pinnedMessages.length, 'items');
+      setPinnedItems(pinnedMessages);
+    } catch (error) {
+      console.error('Failed to load pinned messages:', error);
+      setPinnedItems([]);
+    } finally {
+      setLoadingPinned(false);
+    }
+  };
+
+  // Pin/Unpin message
+  const handlePinMessage = async (messageId: string) => {
+    try {
+      console.log('📌 Pinning message:', messageId);
+      await apiClient.pinMessage(messageId);
+      console.log('✅ Message pinned successfully');
+      // Refresh messages to update pin status
+      loadMessages();
+      // Refresh pinned items if we're on that tab
+      if (activeTab === 'pinned') {
+        console.log('🔄 Refreshing pinned items after pin');
+        loadPinnedMessages();
+      }
+    } catch (error) {
+      console.error('Failed to pin message:', error);
+    }
+  };
+
+  const handleUnpinMessage = async (messageId: string) => {
+    try {
+      console.log('📌 Unpinning message:', messageId);
+      await apiClient.unpinMessage(messageId);
+      console.log('✅ Message unpinned successfully');
+      // Refresh messages to update pin status
+      loadMessages();
+      // Refresh pinned items to remove from list
+      if (activeTab === 'pinned') {
+        console.log('🔄 Refreshing pinned items after unpin');
+        loadPinnedMessages();
+      }
+    } catch (error) {
+      console.error('Failed to unpin message:', error);
+    }
+  };
+
+  // Load pinned messages when tab changes
+  useEffect(() => {
+    console.log('📋 Tab changed to:', activeTab, 'Current channel:', currentChannel?.name);
+    if (activeTab === 'pinned' && currentChannel) {
+      console.log('🔄 Loading pinned messages for tab switch');
+      loadPinnedMessages();
+    }
+  }, [activeTab, currentChannel]);
+
+  // AI Features handlers
+  const handleAutoReply = (message: any) => {
+    console.log('Auto-reply clicked for message:', message._id);
+    console.log('Message content:', message.content);
+    
+    // Set the auto-reply state
+    setAutoReplySelectedMessage(message);
+    setShowAutoReply(message._id);
+    
+    // If this is not already a thread, open the thread for this message
+    // This ensures auto-reply happens in thread context
+    if (!showThreadSidebar || selectedThreadMessage?._id !== message._id) {
+      console.log('Opening thread for auto-reply to message:', message._id);
+      setSelectedThreadMessage(message);
+      setShowThreadSidebar(true);
+    }
+  };
+
+  const handleSelectAutoReply = (reply: string) => {
+    console.log('Auto-reply selected:', reply);
+    
+    // Check if we have a thread open and an auto-reply message
+    if (showThreadSidebar && selectedThreadMessage && autoReplySelectedMessage) {
+      console.log('Sending auto-reply in thread context');
+      // Don't set the main message input, instead we'll pass the reply to the thread
+      // The ThreadSidebar component should handle this
+      setShowAutoReply(null);
+      setAutoReplySelectedMessage(null);
+      
+      // We need to communicate with ThreadSidebar to set the reply
+      // For now, we'll use a custom event or state management
+      // Let's add a state for thread reply
+      setThreadAutoReply(reply);
+    } else {
+      // Normal behavior for main channel
+      setNewMessage(reply);
+      setShowAutoReply(null);
+      setAutoReplySelectedMessage(null);
+      // Focus the input
+      textareaRef.current?.focus();
+    }
+  };
+
+  const handleMeetingNotes = () => {
+    setShowMeetingNotes(true);
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -220,6 +359,16 @@ function MessagingArea() {  const {
   };
 
   const processDroppedFiles = async (files: File[]) => {
+    console.log('📎 Processing dropped files:', files.length);
+    console.log('📎 Current workspace:', currentWorkspace?._id);
+    console.log('📎 Current channel:', currentChannel?._id);
+    
+    if (!currentWorkspace || !currentChannel) {
+      console.error('❌ Missing workspace or channel for file upload');
+      alert('Please make sure you are in a workspace and channel before uploading files.');
+      return;
+    }
+    
     const validFiles = files.filter(file => {
       const isValidSize = file.size <= 5 * 1024 * 1024; // 5MB
       const isValidType = [
@@ -227,8 +376,18 @@ function MessagingArea() {  const {
         'application/pdf', 'text/plain', 
         'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       ].includes(file.type);
+      
+      if (!isValidSize) {
+        console.log(`❌ File ${file.name} is too large: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+      }
+      if (!isValidType) {
+        console.log(`❌ File ${file.name} has unsupported type: ${file.type}`);
+      }
+      
       return isValidSize && isValidType;
     });
+
+    console.log('📎 Valid files after filtering:', validFiles.length);
 
     // Upload files to Firebase and get real URLs
     for (const file of validFiles) {
@@ -236,20 +395,28 @@ function MessagingArea() {  const {
         console.log('🔄 Uploading file to Firebase:', file.name);
         const uploadedFile = await fileUploadService.uploadFile(
           file,
-          currentWorkspace!._id,
-          currentChannel!._id
+          currentWorkspace._id,
+          currentChannel._id
         );
         console.log('✅ File uploaded successfully:', uploadedFile);
         setUploadedFiles(prev => [...prev, uploadedFile]);
       } catch (error) {
         console.error('❌ Failed to upload file:', error);
-        // Show error to user (you could add a toast notification here)
+        alert(`Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
   };
 
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('📎 File input change triggered');
     const files = Array.from(e.target.files || []);
+    console.log('📎 Selected files:', files.map(f => ({ name: f.name, size: f.size, type: f.type })));
+    
+    if (files.length === 0) {
+      console.log('📎 No files selected');
+      return;
+    }
+    
     await processDroppedFiles(files);
     // Reset input value so same file can be selected again
     if (e.target) {
@@ -335,6 +502,7 @@ function MessagingArea() {  const {
   const handleCloseThread = () => {
     setShowThreadSidebar(false);
     setSelectedThreadMessage(null);
+    setThreadAutoReply(''); // Clear any pending auto-reply
   };
 
   const handleQuickReaction = async (messageId: string, emoji: string = '👍') => {
@@ -357,6 +525,8 @@ function MessagingArea() {  const {
   };
 
   const handleUpdateMessagePin = (messageId: string, isPinned: boolean) => {
+    console.log('📌 Updating message pin status:', messageId, 'isPinned:', isPinned);
+    // Update the local message state
     setMessages(
       messages.map(message => 
         message._id === messageId 
@@ -364,6 +534,10 @@ function MessagingArea() {  const {
           : message
       )
     );
+    
+    // Always refresh pinned items when a pin status changes
+    console.log('🔄 Refreshing pinned items after pin status change');
+    loadPinnedMessages();
   };
 
   const formatTime = (timestamp: string) => {
@@ -378,9 +552,6 @@ function MessagingArea() {  const {
     }
   };
 
-  const getInitials = (username: string) => {
-    return username.charAt(0).toUpperCase();
-  };
 
   const handleEmojiSelect = (emojiData: any) => {
     const emoji = emojiData.emoji;
@@ -406,6 +577,11 @@ function MessagingArea() {  const {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showEmojiPicker]);
+
+  // Debug logging for pinned items
+  useEffect(() => {
+    console.log('🎨 Pinned items state changed:', pinnedItems.length, 'items:', pinnedItems);
+  }, [pinnedItems]);
 
   if (!currentChannel) {
     return (
@@ -469,38 +645,86 @@ function MessagingArea() {  const {
               <Users className="w-4 h-4 mr-1" />
               {currentChannel.memberCount}
             </div>
+            <button
+              onClick={handleMeetingNotes}
+              className="flex items-center space-x-2 px-3 py-1.5 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors"
+              title="Generate Meeting Notes"
+            >
+              <FileText className="w-4 h-4" />
+              <span>Meeting Notes</span>
+            </button>
           </div>
+        </div>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200 bg-white">
+        <div className="px-6">
+          <nav className="flex space-x-8">
+            <button
+              onClick={() => setActiveTab('messages')}
+              className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'messages'
+                  ? 'border-purple-500 text-purple-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Messages
+              {messages.length > 0 && (
+                <span className="ml-2 bg-gray-100 text-gray-600 py-1 px-2 rounded-full text-xs">
+                  {messages.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('pinned')}
+              className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'pinned'
+                  ? 'border-purple-500 text-purple-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Pinned Items
+              {pinnedItems.length > 0 && (
+                <span className="ml-2 bg-gray-100 text-gray-600 py-1 px-2 rounded-full text-xs">
+                  {pinnedItems.length}
+                </span>
+              )}
+            </button>
+          </nav>
         </div>
       </div>
 
       {/* Messages Area - Scrollable */}
       <div className="flex-1 overflow-y-auto bg-white min-h-0">
-        {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center p-8">
-              <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: '#F8F8F8' }}>
-                {currentChannel.isPrivate ? (
-                  <Lock className="w-12 h-12" style={{ color: '#868686' }} />
-                ) : (
-                  <Hash className="w-12 h-12" style={{ color: '#868686' }} />
-                )}
-              </div>
-              <h3 className="text-2xl font-bold mb-4" style={{ color: '#1D1C1D' }}>
-                Welcome to #{currentChannel.name}
-              </h3>
-              <p className="max-w-md mx-auto" style={{ color: '#616061' }}>
-                This is the beginning of the #{currentChannel.name} channel.
-                {currentChannel.description && ` ${currentChannel.description}`}
-              </p>
+        {activeTab === 'messages' ? (
+          // Messages Tab Content
+          loading ? (
+            <div className="flex items-center justify-center h-32">
+              <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
             </div>
-          </div>
-        ) : (
-          <div className="px-8 py-2">
-            {messages.map((message: any, index: number) => {
+          ) : messages.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center p-8">
+                <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: '#F8F8F8' }}>
+                  {currentChannel.isPrivate ? (
+                    <Lock className="w-12 h-12" style={{ color: '#868686' }} />
+                  ) : (
+                    <Hash className="w-12 h-12" style={{ color: '#868686' }} />
+                  )}
+                </div>
+                <h3 className="text-2xl font-bold mb-4" style={{ color: '#1D1C1D' }}>
+                  Welcome to #{currentChannel.name}
+                </h3>
+                <p className="max-w-md mx-auto" style={{ color: '#616061' }}>
+                  This is the beginning of the #{currentChannel.name} channel.
+                  {currentChannel.description && ` ${currentChannel.description}`}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="px-8 py-2">
+              {messages.map((message: any, index: number) => {
               const showAvatar = index === 0 || messages[index - 1].author._id !== message.author._id;
               const prevMessage = index > 0 ? messages[index - 1] : null;
               const timeDiff = prevMessage ? new Date(message.createdAt).getTime() - new Date(prevMessage.createdAt).getTime() : 0;
@@ -522,6 +746,13 @@ function MessagingArea() {  const {
                         <Smile className="w-4 h-4" />
                       </button>
                       <button
+                        onClick={() => handleAutoReply(message)}
+                        className="p-1 hover:bg-gray-100 rounded text-purple-500 hover:text-purple-700"
+                        title="Suggest Reply"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => handleStartThread(message._id)}
                         className="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-gray-700"
                         title="Reply in thread"
@@ -539,12 +770,18 @@ function MessagingArea() {  const {
                   <div className="flex">
                     {showFullMessage ? (
                       /* Full message with avatar */
-                      <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-medium text-sm mr-2 mt-0.5 flex-shrink-0" 
-                           style={{ backgroundColor: `hsl(${message.author.username.charCodeAt(0) * 137.5 % 360}, 70%, 50%)` }}>
-                        {message.author.avatar ? (
-                          <img src={message.author.avatar} alt={`${message.author.username} avatar`} className="w-9 h-9 rounded-lg object-cover" />
+                      <div className="mr-2 mt-0.5 flex-shrink-0">
+                        {message.author?.avatar ? (
+                          <img
+                            src={message.author.avatar}
+                            alt={message.author.username}
+                            className="h-8 w-8 rounded-lg object-cover"
+                          />
                         ) : (
-                          getInitials(message.author.username)
+                          <div className="h-8 w-8 rounded-lg flex items-center justify-center text-white text-xs font-medium"
+                               style={{ backgroundColor: `hsl(${message.author?.username?.charCodeAt(0) * 137.5 % 360 || 0}, 70%, 50%)` }}>
+                            {message.author?.username?.charAt(0)?.toUpperCase() || 'U'}
+                          </div>
                         )}
                       </div>
                     ) : (
@@ -571,7 +808,7 @@ function MessagingArea() {  const {
                       <div className="text-sm leading-5 whitespace-pre-wrap break-words" style={{ color: '#1D1C1D' }}>
                         <MessageRenderer 
                           content={message.content}
-                          mentions={message.mentions}
+                          mentions={message.mentions || []}
                           users={workspaceUsers}
                           isChannel={!!currentChannel}
                         />
@@ -597,6 +834,32 @@ function MessagingArea() {  const {
                         )}
                       </div>
 
+                      {/* Auto-Reply Composer */}
+                      {showAutoReply === message._id && autoReplySelectedMessage && (
+                        <div className="mt-3 relative z-10">
+                          <div className="p-3 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg shadow-sm">
+                            <div className="text-xs text-gray-600 mb-2 flex items-center">
+                              <Sparkles className="w-3 h-3 mr-1 text-purple-500" />
+                              AI Reply Suggestions for: "{autoReplySelectedMessage.content.substring(0, 50)}..."
+                            </div>
+                            <ErrorBoundary
+                              fallback={
+                                <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+                                  Failed to load AI suggestions. Please try again.
+                                </div>
+                              }
+                            >
+                              <AutoReplyComposer
+                                messageContent={autoReplySelectedMessage.content}
+                                channelContext={`#${currentChannel.name}`}
+                                onSelectReply={handleSelectAutoReply}
+                                className="bg-white rounded-md"
+                              />
+                            </ErrorBoundary>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Message Reactions and Thread */}
                       <div className="mt-1 flex items-center space-x-2">
                         <MessageActions
@@ -615,10 +878,109 @@ function MessagingArea() {  const {
                     </div>
                   </div>
                 </div>
-              );
-            })}
-            <div ref={messagesEndRef} />
-          </div>
+              );              })}
+              <div ref={messagesEndRef} />
+            </div>
+          )
+        ) : (
+          // Pinned Items Tab Content
+          loadingPinned ? (
+            <div className="flex items-center justify-center h-32">
+              <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : pinnedItems.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center p-8">
+                <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: '#F8F8F8' }}>
+                  <Paperclip className="w-12 h-12" style={{ color: '#868686' }} />
+                </div>
+                <h3 className="text-2xl font-bold mb-4" style={{ color: '#1D1C1D' }}>
+                  No pinned items yet
+                </h3>
+                <p className="max-w-md mx-auto" style={{ color: '#616061' }}>
+                  Pin important messages, docs, and files to keep them handy. Look for the pin option in the message menu.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="px-8 py-2">
+              {pinnedItems.map((message: any) => (
+                <div key={message._id} className="group hover:bg-gray-50 -mx-8 px-8 py-3 transition-colors relative border-l-4 border-yellow-400 bg-yellow-50">
+                  <div className="flex items-start space-x-2">
+                    <div className="text-yellow-600 mt-1">
+                      <Paperclip className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2 mb-1">
+                        <span className="font-semibold text-sm" style={{ color: '#1D1C1D' }}>
+                          {message.author?.username || 'Unknown User'}
+                        </span>
+                        <span className="text-xs text-yellow-600">Pinned Message</span>
+                        <span className="text-xs" style={{ color: '#868686' }}>
+                          {formatTime(message.createdAt)}
+                        </span>
+                        {message.pinnedAt && (
+                          <span className="text-xs text-yellow-600">
+                            Pinned {formatTime(message.pinnedAt)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm leading-5 whitespace-pre-wrap break-words" style={{ color: '#1D1C1D' }}>
+                        <MessageRenderer 
+                          content={message.content || 'Pinned item'}
+                          mentions={message.mentions || []}
+                          users={workspaceUsers}
+                          isChannel={!!currentChannel}
+                        />
+                        {message.isEdited && (
+                          <span className="text-xs ml-1" style={{ color: '#868686' }}>(edited)</span>
+                        )}
+                        
+                        {/* File Display for pinned messages */}
+                        {(message.messageType === 'file' || message.messageType === 'image') && message.fileUrl && (
+                          <div className="mt-2">
+                            <FileDisplay
+                              file={{
+                                url: message.fileUrl,
+                                name: message.fileName || 'Unknown file',
+                                size: message.fileSize || 0,
+                                type: message.fileType || 'application/octet-stream',
+                                path: message.fileUrl
+                              }}
+                              showDownloadButton={true}
+                              compact={false}
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-2 flex items-center space-x-2">
+                        <button
+                          onClick={() => handleUnpinMessage(message._id)}
+                          className="text-xs text-red-600 hover:text-red-800 hover:underline"
+                        >
+                          Unpin
+                        </button>
+                        {message.threadReplyCount > 0 && (
+                          <button
+                            onClick={() => handleStartThread(message._id)}
+                            className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            View Thread ({message.threadReplyCount} replies)
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleStartThread(message._id)}
+                          className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          Reply in Thread
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
         )}
       </div>
 
@@ -635,19 +997,47 @@ function MessagingArea() {  const {
       )}
 
       {/* Message Input - Fixed at bottom */}
-      <div className="px-20 py-10 bg-white flex-shrink-0" style={{ borderTop: '1px solid #E1E1E1' }}>
+      <div className="px-6 py-3 bg-white flex-shrink-0" style={{ borderTop: '1px solid #E1E1E1' }}>
+        {/* Tone & Impact Meter - Above Input */}
+        {newMessage.trim() && (
+          <div className="mb-2">
+            <ToneImpactMeter text={newMessage} />
+          </div>
+        )}
+        
         {/* Message Input Container - Slack Style */}
         <div className="border border-gray-200 rounded-[9px] bg-white shadow-sm focus-within:border-gray-300 focus-within:shadow-md transition-all">
           {/* File Previews Inside Input */}
           {uploadedFiles.length > 0 && (
             <div className="px-4 pt-3 pb-2 border-b border-gray-100 space-y-2">
+              <div className="text-xs text-green-600 mb-2">
+                📎 {uploadedFiles.length} file(s) uploaded
+              </div>
               {uploadedFiles.map((file, index) => (
                 <div key={index} className="flex items-center space-x-3 bg-gray-50 rounded-md p-2.5">
-                  <div className="flex items-center justify-center w-8 h-8 bg-slate-100 rounded-md">
+                  {/* File preview/icon */}
+                  <div className="flex items-center justify-center w-10 h-10 bg-white rounded-md border border-gray-200 overflow-hidden">
                     {file.type.startsWith('image/') ? (
-                      <span className="text-base">🖼️</span>
+                      <img 
+                        src={file.url} 
+                        alt={file.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          // Fallback to icon if image fails to load
+                          (e.target as HTMLImageElement).style.display = 'none';
+                          const icon = document.createElement('div');
+                          icon.innerHTML = '🖼️';
+                          icon.className = 'text-lg';
+                          (e.target as HTMLImageElement).parentNode?.appendChild(icon);
+                        }}
+                      />
                     ) : (
-                      <Paperclip className="w-4 h-4 text-gray-600" />
+                      <div className="text-lg">
+                        {file.type === 'application/pdf' ? '📄' :
+                         file.type.includes('document') || file.type.includes('word') ? '📝' :
+                         file.type.includes('text') ? '📋' :
+                         '📎'}
+                      </div>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -657,6 +1047,7 @@ function MessagingArea() {  const {
                   <button
                     onClick={() => removeUploadedFile(file)}
                     className="flex items-center justify-center w-6 h-6 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded transition-colors"
+                    title="Remove file"
                   >
                     ×
                   </button>
@@ -665,143 +1056,150 @@ function MessagingArea() {  const {
             </div>
           )}
 
-          {/* Input Row */}
-          <div className="flex items-center px-3 py-2">
-            {/* Left Actions */}
-            <div className="flex items-center space-x-1 mr-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept="image/*,.pdf,.txt,.doc,.docx"
-                onChange={handleFileInputChange}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center justify-center w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-                title="Upload file"
-              >
-                <Paperclip className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (textareaRef.current) {
-                    const textarea = textareaRef.current;
-                    const cursorPosition = textarea.selectionStart;
-                    const newText = newMessage.substring(0, cursorPosition) + '@' + newMessage.substring(cursorPosition);
-                    setNewMessage(newText);
-                    setShowMentionDropdown(true);
-                    setMentionQuery('');
-                    setMentionPosition(cursorPosition);
-                    
-                    // Focus textarea and position cursor
-                    setTimeout(() => {
-                      textarea.focus();
-                      textarea.setSelectionRange(cursorPosition + 1, cursorPosition + 1);
-                    }, 0);
-                  }
-                }}
-                className="flex items-center justify-center w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-                title="Mention someone"
-              >
-                <AtSign className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Text Input */}
-            <form onSubmit={handleSendMessage} className="flex-1 flex items-center space-x-2">
-              <div className="flex-1 relative">
-                <textarea
-                  ref={textareaRef}
-                  value={newMessage}
-                  onChange={handleTextareaChange}
-                  placeholder={`Message #${currentChannel.name}`}
-                  className="w-full px-2 py-2 border-0 resize-none focus:ring-0 focus:outline-none text-sm placeholder-gray-500 leading-5"
-                  rows={1}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      if (showMentionDropdown && filteredMembers.length > 0) {
-                        // Select first mention if dropdown is open
-                        insertMention(filteredMembers[0].username);
-                      } else {
-                        handleSendMessage(e);
+          {/* Input Row - Slack-style */}
+          <div className="flex items-end px-4 py-3">
+            {/* Text Input with integrated buttons */}
+            <form onSubmit={handleSendMessage} className="flex-1">
+              <div className="flex items-end bg-white border border-gray-300 rounded-lg focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all">
+                
+                {/* Left Actions inside input */}
+                <div className="flex items-center space-x-1 px-3 py-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf,.txt,.doc,.docx"
+                    onChange={handleFileInputChange}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      console.log('📎 Paperclip button clicked');
+                      console.log('📎 File input ref:', fileInputRef.current);
+                      alert('File upload button clicked! Check console for logs.');
+                      fileInputRef.current?.click();
+                    }}
+                    className="flex items-center justify-center w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                    title="Upload file"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (textareaRef.current) {
+                        const textarea = textareaRef.current;
+                        const cursorPosition = textarea.selectionStart;
+                        const newText = newMessage.substring(0, cursorPosition) + '@' + newMessage.substring(cursorPosition);
+                        setNewMessage(newText);
+                        setShowMentionDropdown(true);
+                        setMentionQuery('');
+                        setMentionPosition(cursorPosition);
+                        
+                        // Focus textarea and position cursor
+                        setTimeout(() => {
+                          textarea.focus();
+                          textarea.setSelectionRange(cursorPosition + 1, cursorPosition + 1);
+                        }, 0);
                       }
-                    } else if (e.key === 'Escape' && showMentionDropdown) {
-                      setShowMentionDropdown(false);
-                      setMentionQuery('');
-                    }
-                  }}
-                  style={{
-                    minHeight: '2.25rem',
-                    maxHeight: '200px',
-                  }}
-                  disabled={sending}
-                />
-                
-                {/* Mention Dropdown */}
-                {showMentionDropdown && filteredMembers.length > 0 && (
-                  <div className="absolute bottom-full left-0 mb-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto z-20 w-64">
-                    {filteredMembers.slice(0, 5).map((member) => (
-                      <button
-                        key={member._id}
-                        type="button"
-                        onClick={() => insertMention(member.username)}
-                        className="w-full px-3 py-2.5 text-left hover:bg-gray-50 flex items-center space-x-2 border-b border-gray-100 last:border-b-0 first:rounded-t-lg last:rounded-b-lg"
-                      >
-                        <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
-                          {/* For now using initials - will update when user avatars are available in workspace member data */}
-                          {member.username.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">@{member.username}</p>
-                          {!(member as any).isSpecial && (member as any).profession && (
-                            <p className="text-xs text-gray-500 truncate">{(member as any).profession}</p>
-                          )}
-                          {(member as any).isSpecial && (
-                            <p className="text-xs text-gray-500 truncate">
-                              {(member as any).type === 'channel' ? 'Notify channel' : 'Notify everyone'}
-                            </p>
-                          )}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              
-              {/* Right Actions & Send Button */}
-              <div className="flex items-center space-x-1">
-                {/* Formatting Actions */}
-                <button
-                  type="button"
-                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  className="flex items-center justify-center w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-                  title="Add emoji"
-                >
-                  <Smile className="w-4 h-4" />
-                </button>
-                
-                {/* Send Button */}
-                <button
-                  type="submit"
-                  disabled={(!newMessage.trim() && uploadedFiles.length === 0) || sending}
-                  className={`flex items-center justify-center w-8 h-8 rounded-md transition-all ${
-                    (!newMessage.trim() && uploadedFiles.length === 0) || sending
-                      ? 'text-gray-400 cursor-not-allowed'
-                      : 'text-white bg-[#007a5a] hover:bg-[#006644] shadow-sm'
-                  }`}
-                  title="Send message"
-                >
-                  {sending ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    <Send className="w-4 h-4" />
+                    }}
+                    className="flex items-center justify-center w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                    title="Mention someone"
+                  >
+                    <AtSign className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Text Input Area */}
+                <div className="flex-1 relative min-w-0">
+                  <textarea
+                    ref={textareaRef}
+                    value={newMessage}
+                    onChange={handleTextareaChange}
+                    placeholder={`Message #${currentChannel.name}`}
+                    className="w-full px-3 py-2.5 border-0 resize-none focus:ring-0 focus:outline-none text-sm placeholder-gray-500 leading-5 bg-transparent"
+                    rows={1}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (showMentionDropdown && filteredMembers.length > 0) {
+                          // Select first mention if dropdown is open
+                          insertMention(filteredMembers[0].username);
+                        } else {
+                          handleSendMessage(e);
+                        }
+                      } else if (e.key === 'Escape' && showMentionDropdown) {
+                        setShowMentionDropdown(false);
+                        setMentionQuery('');
+                      }
+                    }}
+                    style={{
+                      minHeight: '40px',
+                      maxHeight: '200px',
+                    }}
+                    disabled={sending}
+                  />
+                  
+                  {/* Mention Dropdown */}
+                  {showMentionDropdown && filteredMembers.length > 0 && (
+                    <div className="absolute bottom-full left-0 mb-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto z-20 w-64">
+                      {filteredMembers.slice(0, 5).map((member) => (
+                        <button
+                          key={member._id}
+                          type="button"
+                          onClick={() => insertMention(member.username)}
+                          className="w-full px-3 py-2.5 text-left hover:bg-gray-50 flex items-center space-x-2 border-b border-gray-100 last:border-b-0 first:rounded-t-lg last:rounded-b-lg"
+                        >
+                          <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
+                            {member.username.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">@{member.username}</p>
+                            {!(member as any).isSpecial && (member as any).profession && (
+                              <p className="text-xs text-gray-500 truncate">{(member as any).profession}</p>
+                            )}
+                            {(member as any).isSpecial && (
+                              <p className="text-xs text-gray-500 truncate">
+                                {(member as any).type === 'channel' ? 'Notify channel' : 'Notify everyone'}
+                              </p>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   )}
-                </button>
+                </div>
+                
+                {/* Right Actions inside input */}
+                <div className="flex items-center space-x-1 px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    className="flex items-center justify-center w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                    title="Add emoji"
+                  >
+                    <Smile className="w-4 h-4" />
+                  </button>
+                  
+                  {/* Send Button */}
+                  <button
+                    type="submit"
+                    disabled={(!newMessage.trim() && uploadedFiles.length === 0) || sending}
+                    className={`flex items-center justify-center w-9 h-9 rounded-md transition-all ${
+                      (!newMessage.trim() && uploadedFiles.length === 0) || sending
+                        ? 'text-gray-400 cursor-not-allowed bg-gray-100'
+                        : 'text-white bg-[#007a5a] hover:bg-[#006644] shadow-sm hover:shadow-md'
+                    }`}
+                    title="Send message"
+                  >
+                    {sending ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -822,6 +1220,15 @@ function MessagingArea() {  const {
         </div>
       )}
       </div>
+
+      {/* Meeting Notes Generator */}
+      {showMeetingNotes && currentChannel && (
+        <MeetingNotesGenerator
+          channelId={currentChannel._id}
+          channelName={currentChannel.name}
+          onClose={() => setShowMeetingNotes(false)}
+        />
+      )}
       
       {/* Thread Sidebar */}
       {showThreadSidebar && (
@@ -829,6 +1236,8 @@ function MessagingArea() {  const {
           isOpen={showThreadSidebar}
           onClose={handleCloseThread}
           parentMessage={selectedThreadMessage}
+          autoReply={threadAutoReply}
+          onAutoReplyUsed={() => setThreadAutoReply('')}
         />
       )}
     </div>

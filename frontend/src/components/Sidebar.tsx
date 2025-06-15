@@ -1,10 +1,11 @@
-import { Hash, Lock, ChevronDown, Plus, Circle, MessageSquare, Activity, LogOut, Menu, X } from 'lucide-react';
+import { Hash, Lock, ChevronDown, Plus, Circle, MessageSquare, Activity, LogOut, Menu, X, Brain } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { apiClient } from '../lib/api';
 import { socketClient } from '../lib/socketClient';
 import { AvatarUploadService } from '../lib/avatarUploadService';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import OrgBrainSidebar from './OrgBrainSidebar';
 
 function Sidebar() {
   const navigate = useNavigate();
@@ -20,7 +21,6 @@ function Sidebar() {
     toggleSidebar,
     currentView,
     setCurrentView,
-    onlineUsers,
     updateUserPresence,
     workspaceUsers,
     setWorkspaceUsers
@@ -35,6 +35,7 @@ function Sidebar() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [showOrgBrain, setShowOrgBrain] = useState(false);
 
   useEffect(() => {
     if (currentWorkspace && !channelsLoaded) {
@@ -224,10 +225,6 @@ function Sidebar() {
           </button>
           <div className="flex-1 ml-4">
             <h1 className="font-bold text-lg">{currentWorkspace?.name}</h1>
-            <div className="flex items-center space-x-1 text-gray-400 text-sm">
-              <Circle className="w-2 h-2 fill-green-400 text-green-400" />
-              <span>{Object.values(onlineUsers).filter(user => user.status === 'online').length} online</span>
-            </div>
           </div>
           <ChevronDown className="w-5 h-5 text-gray-400" />
         </div>
@@ -258,6 +255,17 @@ function Sidebar() {
           >
             <Activity className="w-4 h-4" />
             <span>Activity</span>
+          </button>
+        </div>
+
+        {/* Org Brain */}
+        <div className="p-2">
+          <button
+            onClick={() => setShowOrgBrain(true)}
+            className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-gray-300 hover:bg-gray-700"
+          >
+            <Brain className="w-4 h-4" />
+            <span>Org Brain</span>
           </button>
         </div>
 
@@ -488,6 +496,12 @@ function Sidebar() {
           </div>
         </div>
       )}
+
+      {/* Org Brain Sidebar */}
+      <OrgBrainSidebar 
+        isOpen={showOrgBrain} 
+        onClose={() => setShowOrgBrain(false)} 
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import type { UploadTaskSnapshot } from 'firebase/storage';
-import { storage } from './firebase';
+import { storage, isFirebaseConfigured } from './firebase';
 
 export interface FileUploadProgress {
   progress: number;
@@ -59,6 +59,26 @@ class FileUploadService {
 
     if (!this.validateFileType(file)) {
       throw new Error(`File type ${file.type} is not supported`);
+    }
+
+    // If Firebase is not configured, return a mock uploaded file
+    if (!isFirebaseConfigured) {
+      console.warn('⚠️ Firebase not configured, using local file URL (demo mode)');
+      
+      // Create a more persistent local URL for demo mode
+      const mockUrl = URL.createObjectURL(file);
+      
+      // Store the file blob temporarily for demo mode
+      const fileData = {
+        url: mockUrl,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        path: `demo/${file.name}`,
+        blob: file // Keep reference to original blob for demo mode
+      };
+      
+      return fileData as UploadedFile;
     }
 
     const filePath = this.generateFilePath(workspaceId, channelId, file.name);

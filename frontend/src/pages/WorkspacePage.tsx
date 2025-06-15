@@ -10,7 +10,7 @@ import ActivityView from '../components/ActivityView';
 import DirectMessagesView from '../components/DirectMessagesView';
 
 function WorkspacePage() {
-  const { workspaceId, channelId } = useParams<{ workspaceId: string; channelId?: string }>();
+  const { workspaceId, channelId, userId } = useParams<{ workspaceId: string; channelId?: string; userId?: string }>();
   const navigate = useNavigate();
   const { 
     user, 
@@ -19,9 +19,13 @@ function WorkspacePage() {
     setCurrentWorkspace,
     currentChannel,
     setCurrentChannel,
+    currentDMUser,
+    setCurrentDMUser,
     updateUserPresence,
     currentView,
-    sidebarCollapsed
+    setCurrentView,
+    sidebarCollapsed,
+    workspaceUsers
   } = useAppStore();
   
   const [loading, setLoading] = useState(true);
@@ -63,9 +67,37 @@ function WorkspacePage() {
         // Set workspace and load channels
         setCurrentWorkspace(workspace);
         
-        // Load channels and handle channel selection properly
+        // Load channels and handle channel/DM selection properly
         const channelsResponse = await apiClient.getChannels(workspace._id);
-        if (channelsResponse.channels.length > 0) {
+        
+        // Load workspace users (needed for both DM and channel routing)
+        let users = workspaceUsers;
+        if (users.length === 0) {
+          const usersResponse = await apiClient.getWorkspaceUsers(workspace._id);
+          users = usersResponse.users;
+        }
+
+        // Handle DM routing
+        if (userId) {
+          const targetUser = users.find((u: any) => u._id === userId);
+          if (targetUser) {
+            console.log('Setting DM user from URL:', targetUser.username);
+            setCurrentDMUser(targetUser);
+            setCurrentView('dms');
+            // Clear current channel when in DM mode
+            setCurrentChannel(null);
+          } else {
+            // User ID in URL doesn't exist, redirect to general channel
+            const generalChannel = channelsResponse.channels.find((ch: any) => ch.name === 'general');
+            const defaultChannel = generalChannel || channelsResponse.channels[0];
+            setCurrentChannel(defaultChannel);
+            setCurrentView('channels');
+            setCurrentDMUser(null);
+            navigate(`/workspace/${workspaceId}/channel/${defaultChannel._id}`, { replace: true });
+          }
+        }
+        // Handle channel routing OR check for persisted DM
+        else if (channelsResponse.channels.length > 0) {
           let targetChannel = null;
           
           // Priority 1: If we have a channelId in URL, use that
@@ -74,34 +106,61 @@ function WorkspacePage() {
             if (targetChannel) {
               console.log('Setting channel from URL:', targetChannel.name);
               setCurrentChannel(targetChannel);
+              setCurrentView('channels');
+              // Clear DM user when in channel mode
+              setCurrentDMUser(null);
             } else {
               // Channel ID in URL doesn't exist, redirect to general
               const generalChannel = channelsResponse.channels.find((ch: any) => ch.name === 'general');
               const defaultChannel = generalChannel || channelsResponse.channels[0];
               setCurrentChannel(defaultChannel);
+              setCurrentView('channels');
+              setCurrentDMUser(null);
               navigate(`/workspace/${workspaceId}/channel/${defaultChannel._id}`, { replace: true });
             }
           }
-          // Priority 2: If no channelId in URL but we have a current channel in store, verify it exists
+          // Priority 2: If no channelId in URL but we have a persisted DM user, restore that
+          else if (currentDMUser) {
+            const targetUser = users.find((u: any) => u._id === currentDMUser._id);
+            if (targetUser) {
+              console.log('Restoring persisted DM with:', targetUser.username);
+              setCurrentDMUser(targetUser);
+              setCurrentView('dms');
+              setCurrentChannel(null);
+              navigate(`/workspace/${workspaceId}/dm/${targetUser._id}`, { replace: true });
+            } else {
+              // Persisted DM user doesn't exist anymore, fall back to general channel
+              const generalChannel = channelsResponse.channels.find((ch: any) => ch.name === 'general');
+              const defaultChannel = generalChannel || channelsResponse.channels[0];
+              setCurrentChannel(defaultChannel);
+              setCurrentView('channels');
+              setCurrentDMUser(null);
+              navigate(`/workspace/${workspaceId}/channel/${defaultChannel._id}`, { replace: true });
+            }
+          }
+          // Priority 3: If no channelId in URL and no persisted DM, but we have a persisted channel, verify it exists
           else if (currentChannel) {
             targetChannel = channelsResponse.channels.find((ch: any) => ch._id === currentChannel._id);
             if (targetChannel) {
               console.log('Using persisted channel:', targetChannel.name);
+              setCurrentView('channels');
               navigate(`/workspace/${workspaceId}/channel/${targetChannel._id}`, { replace: true });
             } else {
               // Stored channel doesn't exist anymore, fall back to general
               const generalChannel = channelsResponse.channels.find((ch: any) => ch.name === 'general');
               const defaultChannel = generalChannel || channelsResponse.channels[0];
               setCurrentChannel(defaultChannel);
+              setCurrentView('channels');
               navigate(`/workspace/${workspaceId}/channel/${defaultChannel._id}`, { replace: true });
             }
           }
-          // Priority 3: No channel in URL or store, auto-select general
+          // Priority 4: No specific routing info, auto-select general channel
           else {
             const generalChannel = channelsResponse.channels.find((ch: any) => ch.name === 'general');
             const defaultChannel = generalChannel || channelsResponse.channels[0];
             console.log('Auto-selecting default channel:', defaultChannel.name);
             setCurrentChannel(defaultChannel);
+            setCurrentView('channels');
             navigate(`/workspace/${workspaceId}/channel/${defaultChannel._id}`, { replace: true });
           }
         }

@@ -30,11 +30,6 @@ export function MessageRenderer({
   // Always parse mentions from content to catch any @mentions
   const parsedMentions = parseMentions(content, users, isChannel);
   
-  // Combine provided mentions with parsed ones, removing duplicates
-  const allMentions = [...mentions, ...parsedMentions].filter((mention, index, self) => 
-    index === self.findIndex(m => m.displayText === mention.displayText)
-  );
-  
   // Render content with mentions highlighted
   let renderedContent = content;
   

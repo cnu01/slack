@@ -1,6 +1,20 @@
 import { initializeApp } from 'firebase/app';
 import { getStorage } from 'firebase/storage';
 
+// Check if Firebase is properly configured
+const isFirebaseConfigured = !!(
+  import.meta.env.REACT_APP_FIREBASE_API_KEY &&
+  import.meta.env.REACT_APP_FIREBASE_PROJECT_ID &&
+  import.meta.env.REACT_APP_FIREBASE_STORAGE_BUCKET
+);
+
+console.log('🔥 Firebase Configuration Status:', {
+  isConfigured: isFirebaseConfigured,
+  apiKey: import.meta.env.REACT_APP_FIREBASE_API_KEY ? '✅ Set' : '❌ Missing',
+  projectId: import.meta.env.REACT_APP_FIREBASE_PROJECT_ID ? '✅ Set' : '❌ Missing',
+  storageBucket: import.meta.env.REACT_APP_FIREBASE_STORAGE_BUCKET ? '✅ Set' : '❌ Missing'
+});
+
 // Firebase configuration - replace with your actual Firebase config
 // You can get these from Firebase Console > Project Settings > General > Your apps
 const firebaseConfig = {
@@ -18,4 +32,5 @@ const app = initializeApp(firebaseConfig);
 // Initialize Firebase Storage
 export const storage = getStorage(app);
 
+export { isFirebaseConfigured };
 export default app;

@@ -1,13 +1,18 @@
+// Load environment variables first, before any other imports
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env' });
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import connectDB from './config/database';
 import { authenticateToken } from './middleware/auth';
+import { errorHandler } from './middleware/errorHandler';
 import SocketManager from './utils/socketManager';
+import { pineconeService } from './services/ai/pineconeService';
 
 // Routes
 import authRoutes from './routes/auth';
@@ -15,9 +20,7 @@ import workspaceRoutes from './routes/workspaces';
 import channelRoutes from './routes/channels';
 import messageRoutes from './routes/messages';
 import messageActionRoutes from './routes/messageActions';
-
-// Load environment variables
-dotenv.config();
+import aiRoutes from './routes/ai';
 
 const app = express();
 const server = createServer(app);
@@ -32,6 +35,9 @@ const io = new Server(server, {
 
 // Connect to MongoDB
 connectDB();
+
+// Initialize AI services
+pineconeService.initializeIndex().catch(console.error);
 
 // Middleware
 app.use(helmet());
@@ -58,6 +64,10 @@ app.use('/api/workspaces', authenticateToken, workspaceRoutes);
 app.use('/api/channels', authenticateToken, channelRoutes);
 app.use('/api/messages', authenticateToken, messageRoutes);
 app.use('/api/message-actions', messageActionRoutes);
+app.use('/api/ai', authenticateToken, aiRoutes);
+
+// Error handling middleware
+app.use(errorHandler);
 
 // Socket.IO connection handling
 const socketManager = new SocketManager(io);

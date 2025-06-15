@@ -23,7 +23,11 @@ class ApiClient {
       throw new Error(error.error || `HTTP ${response.status}`);
     }
 
-    return response.json();
+    const result = await response.json();
+    
+    // If the response has a 'data' field (success response format), return just the data
+    // Otherwise, return the full result (for backwards compatibility)
+    return result.data !== undefined ? result.data : result;
   }
 
   // Auth endpoints
@@ -183,6 +187,10 @@ class ApiClient {
   }
 
   // Pin endpoints
+  async getPinnedMessages(channelId: string) {
+    return this.request(`/message-actions/channels/${channelId}/pinned`);
+  }
+
   async pinMessage(messageId: string) {
     return this.request(`/message-actions/${messageId}/pin`, {
       method: 'POST'
@@ -193,10 +201,6 @@ class ApiClient {
     return this.request(`/message-actions/${messageId}/pin`, {
       method: 'DELETE'
     });
-  }
-
-  async getPinnedMessages(channelId: string) {
-    return this.request(`/message-actions/channels/${channelId}/pinned`);
   }
 
   // Direct Message endpoints
@@ -238,6 +242,42 @@ class ApiClient {
     return this.request(`/messages/dm/${otherUserId}`, {
       method: 'POST',
       body: JSON.stringify(payload)
+    });
+  }
+
+  // AI endpoints
+  async generateAutoReply(messageContent: string, channelContext?: string, tone?: string) {
+    return this.request('/ai/auto-reply', {
+      method: 'POST',
+      body: JSON.stringify({ messageContent, channelContext, tone })
+    });
+  }
+
+  async analyzeMessage(text: string) {
+    return this.request('/ai/analyze', {
+      method: 'POST',
+      body: JSON.stringify({ text })
+    });
+  }
+
+  async searchOrgBrain(query: string, workspaceId: string, maxResults = 10) {
+    return this.request('/ai/org-brain/search', {
+      method: 'POST',
+      body: JSON.stringify({ query, workspaceId, maxResults })
+    });
+  }
+
+  async summarizeConversation(channelId: string, messageCount = 50) {
+    return this.request('/ai/summarize', {
+      method: 'POST',
+      body: JSON.stringify({ channelId, messageCount })
+    });
+  }
+
+  async summarizeThread(messageId: string) {
+    return this.request('/ai/summarize-thread', {
+      method: 'POST',
+      body: JSON.stringify({ messageId })
     });
   }
 }

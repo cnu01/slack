@@ -30,6 +30,12 @@ function App() {
           </ProtectedRoute>
         } />
         
+        <Route path="/workspace/:workspaceId/dm/:userId" element={
+          <ProtectedRoute>
+            <WorkspacePage />
+          </ProtectedRoute>
+        } />
+        
         {/* Default redirect */}
         <Route path="/" element={<Navigate to="/workspaces" replace />} />
         

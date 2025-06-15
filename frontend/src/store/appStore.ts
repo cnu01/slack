@@ -73,6 +73,11 @@ interface AppState {
   rightSidebarOpen: boolean;
   currentView: 'channels' | 'dms' | 'threads' | 'activity';
   
+  // AI state
+  aiInteracting: boolean;
+  aiHistory: any[];
+  recentAutoReplies: string[];
+  
   // Actions
   setAuth: (user: User, token: string) => void;
   logout: () => void;
@@ -97,6 +102,12 @@ interface AppState {
   toggleSidebar: () => void;
   toggleRightSidebar: () => void;
   setCurrentView: (view: 'channels' | 'dms' | 'threads' | 'activity') => void;
+
+  // AI actions
+  setAIInteracting: (interacting: boolean) => void;
+  addToAIHistory: (item: any) => void;
+  addRecentAutoReply: (reply: string) => void;
+  clearRecentAutoReplies: () => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -118,6 +129,11 @@ export const useAppStore = create<AppState>()(
       sidebarCollapsed: false,
       rightSidebarOpen: false,
       currentView: 'channels',
+
+      // AI state
+      aiInteracting: false,
+      aiHistory: [],
+      recentAutoReplies: [],
 
       // Actions
       setAuth: (user, token) => set({ 
@@ -229,7 +245,20 @@ export const useAppStore = create<AppState>()(
         rightSidebarOpen: !state.rightSidebarOpen 
       })),
       
-      setCurrentView: (view) => set({ currentView: view })
+      setCurrentView: (view) => set({ currentView: view }),
+
+      // AI actions
+      setAIInteracting: (interacting) => set({ aiInteracting: interacting }),
+      
+      addToAIHistory: (item) => set((state) => ({
+        aiHistory: [item, ...state.aiHistory].slice(0, 50) // Keep last 50 items
+      })),
+      
+      addRecentAutoReply: (reply) => set((state) => ({
+        recentAutoReplies: [reply, ...state.recentAutoReplies.filter(r => r !== reply)].slice(0, 10) // Keep last 10 unique replies
+      })),
+      
+      clearRecentAutoReplies: () => set({ recentAutoReplies: [] })
     }),
     {
       name: 'slack-clone-store',
@@ -239,6 +268,7 @@ export const useAppStore = create<AppState>()(
         isAuthenticated: state.isAuthenticated,
         currentWorkspace: state.currentWorkspace,
         currentChannel: state.currentChannel,
+        currentDMUser: state.currentDMUser,
         currentView: state.currentView
       })
     }

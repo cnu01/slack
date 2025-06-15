@@ -1,18 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Paperclip, Smile, AtSign, Menu, User, Users } from 'lucide-react';
+import { Send, Paperclip, Smile, AtSign, Menu, User, Users, Sparkles } from 'lucide-react';
 import EmojiPicker from 'emoji-picker-react';
 import { useAppStore } from '../store/appStore';
 import { apiClient } from '../lib/api';
 import { socketClient } from '../lib/socketClient';
 import FileDisplay from './FileDisplay';
 import MessageActions from './MessageActions';
-import ThreadButton from './ThreadButton';
 import ThreadSidebar from './ThreadSidebar';
-import MessageMenu from './MessageMenu';
 import { MessageRenderer } from './MessageRenderer';
 import { parseMentions } from '../utils/mentionUtils';
 import type { UploadedFile } from '../lib/fileUploadService';
 import { fileUploadService } from '../lib/fileUploadService';
+import UnifiedInput from './UnifiedInput';
+import type { UnifiedInputRef } from './UnifiedInput';
+import ToneImpactMeter from './ToneImpactMeter';
+import AutoReplyComposer from './AutoReplyComposer';
 
 function DirectMessagesView() {
   const {
@@ -41,12 +43,25 @@ function DirectMessagesView() {
   
   // Emoji picker state
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  // AI Features state
+  const [showAutoReply, setShowAutoReply] = useState<string | null>(null);
+  const [autoReplySelectedMessage, setAutoReplySelectedMessage] = useState<any>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<UnifiedInputRef>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<number | undefined>(undefined);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+
+  // Helper function to generate consistent DM conversation ID
+  const getDMConversationId = (): string | null => {
+    if (!currentDMUser) return null;
+    const currentUserId = JSON.parse(localStorage.getItem('user') || '{}')._id;
+    if (!currentUserId) return null;
+    const sortedIds = [currentUserId, currentDMUser._id].sort();
+    return `dm-${sortedIds[0]}-${sortedIds[1]}`;
+  };
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -78,7 +93,9 @@ function DirectMessagesView() {
   useEffect(() => {
     if (!currentDMUser) return;
 
-    const conversationId = `dm-${currentDMUser._id}`;
+    const conversationId = getDMConversationId();
+    if (!conversationId) return;
+    
     console.log('🔄 Setting up DM conversation:', conversationId);
 
     // Setup socket listeners
@@ -88,6 +105,7 @@ function DirectMessagesView() {
     const unsubscribeMessage = socketClient.onMessage((message) => {
       console.log('📨 Received DM message:', message);
       if (message.channel === conversationId) {
+        console.log('✅ Message matches DM conversation, adding to state');
         addMessage(message);
       }
     });
@@ -136,6 +154,19 @@ function DirectMessagesView() {
     };
   }, [currentDMUser, setMessages, addMessage]);
 
+  // AI Features handlers
+  const handleAutoReply = (message: any) => {
+    setAutoReplySelectedMessage(message);
+    setShowAutoReply(message._id);
+  };
+
+  const handleSelectAutoReply = (reply: string) => {
+    setNewMessage(reply);
+    setShowAutoReply(null);
+    setAutoReplySelectedMessage(null);
+    inputRef.current?.focus();
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentDMUser || (!newMessage.trim() && uploadedFiles.length === 0) || sending) return;
@@ -169,9 +200,8 @@ function DirectMessagesView() {
   };
 
   const handleTyping = () => {
-    if (!currentDMUser) return;
-
-    const conversationId = `dm-${currentDMUser._id}`;
+    const conversationId = getDMConversationId();
+    if (!conversationId) return;
 
     // Clear existing timeout
     if (typingTimeoutRef.current) {
@@ -187,56 +217,41 @@ function DirectMessagesView() {
     }, 2000);
   };
 
-  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    setNewMessage(value);
-    
-    // Auto-resize textarea
-    const textarea = e.target;
-    textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
-    
-    // Check for mention trigger
-    const cursorPosition = textarea.selectionStart;
-    const textBeforeCursor = value.substring(0, cursorPosition);
-    const mentionMatch = textBeforeCursor.match(/@(\w*)$/);
-    
-    if (mentionMatch) {
-      setMentionQuery(mentionMatch[1]);
-      setMentionPosition(cursorPosition - mentionMatch[1].length - 1);
-      setShowMentionDropdown(true);
-    } else {
-      setShowMentionDropdown(false);
-    }
-    
-    // Trigger typing indicator
-    handleTyping();
-  };
-
   const handleEmojiSelect = (emojiData: any) => {
     const emoji = emojiData.emoji;
     setNewMessage(prev => prev + emoji);
     setShowEmojiPicker(false);
     
-    // Focus back on textarea
-    if (textareaRef.current) {
-      textareaRef.current.focus();
+    // Focus back on input
+    if (inputRef.current) {
+      inputRef.current.focus();
     }
   };
 
   const insertMention = (username: string) => {
-    const beforeMention = newMessage.substring(0, mentionPosition);
-    const afterMention = newMessage.substring(mentionPosition + mentionQuery.length + 1);
-    const newText = beforeMention + `@${username} ` + afterMention;
+    const mentionText = `@${username} `;
+    const textBeforeCursor = newMessage.substring(0, mentionPosition);
+    const textAfterCursor = newMessage.substring(mentionPosition + mentionQuery.length + 1);
+    const newText = textBeforeCursor + mentionText + textAfterCursor;
     
     setNewMessage(newText);
     setShowMentionDropdown(false);
     setMentionQuery('');
     
-    // Focus back on textarea
-    if (textareaRef.current) {
-      textareaRef.current.focus();
+    // Focus back on input
+    if (inputRef.current) {
+      inputRef.current.focus();
     }
+  };
+
+  const handleUpdateMessageReactions = (messageId: string, reactions: any[]) => {
+    setMessages(
+      messages.map(message => 
+        message._id === messageId 
+          ? { ...message, reactions }
+          : message
+      )
+    );
   };
 
   const removeUploadedFile = (fileToRemove: UploadedFile) => {
@@ -284,7 +299,12 @@ function DirectMessagesView() {
   };
 
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('📎 DM File input change triggered');
     const files = Array.from(e.target.files || []);
+    console.log('📎 DM Selected files:', files.map(f => ({ name: f.name, size: f.size, type: f.type })));
+    console.log('📎 DM Current workspace:', currentWorkspace?._id);
+    console.log('📎 DM Current user:', currentDMUser?._id);
+    
     if (files.length > 0 && currentWorkspace && currentDMUser) {
       try {
         for (const file of files) {
@@ -304,6 +324,12 @@ function DirectMessagesView() {
         console.error('❌ Selected file upload failed:', error);
         alert(`File upload failed: ${error instanceof Error ? error.message : 'Please try again.'}`);
       }
+    } else {
+      console.log('❌ DM Missing requirements:', { 
+        filesLength: files.length, 
+        hasWorkspace: !!currentWorkspace, 
+        hasDMUser: !!currentDMUser 
+      });
     }
     
     // Reset input value so same file can be selected again
@@ -358,7 +384,7 @@ function DirectMessagesView() {
         onDrop={handleDrop}
       >
         {/* DM Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200">
+        <div className="flex items-center justify-between px-8 py-4 bg-white border-b border-gray-200">
           <div className="flex items-center space-x-3">
             <button
               onClick={toggleSidebar}
@@ -367,8 +393,19 @@ function DirectMessagesView() {
               <Menu className="w-5 h-5" />
             </button>
             
-            <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
-              {currentDMUser.username.charAt(0).toUpperCase()}
+            <div className="flex-shrink-0">
+              {currentDMUser.avatar ? (
+                <img
+                  src={currentDMUser.avatar}
+                  alt={currentDMUser.username}
+                  className="h-8 w-8 rounded-lg object-cover"
+                />
+              ) : (
+                <div className="h-8 w-8 rounded-lg flex items-center justify-center text-white text-xs font-medium"
+                     style={{ backgroundColor: `hsl(${currentDMUser.username?.charCodeAt(0) * 137.5 % 360 || 0}, 70%, 50%)` }}>
+                  {currentDMUser.username?.charAt(0)?.toUpperCase() || 'U'}
+                </div>
+              )}
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">{currentDMUser.username}</h2>
@@ -378,7 +415,7 @@ function DirectMessagesView() {
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+        <div className="flex-1 overflow-y-auto bg-white min-h-0">
           {loading ? (
             <div className="flex items-center justify-center p-8">
               <div className="text-gray-500">Loading messages...</div>
@@ -394,43 +431,85 @@ function DirectMessagesView() {
               </div>
             </div>
           ) : (
-            <div className="p-4 space-y-4">
+            <div className="px-8 py-4 space-y-4">
               {messages.map((message) => (
-                <div key={message._id} className="flex items-start space-x-3 group">
-                  <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                    {message.author.username.charAt(0).toUpperCase()}
+                <div key={message._id} className="flex items-start space-x-3 group relative">
+                  {/* Auto-Reply Action on Hover */}
+                  <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <button
+                      onClick={() => handleAutoReply(message)}
+                      className="p-1 hover:bg-gray-100 rounded text-purple-500 hover:text-purple-700 bg-white border border-gray-300 shadow-sm"
+                      title="Suggest Reply"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="flex-shrink-0">
+                    {message.author?.avatar ? (
+                      <img
+                        src={message.author.avatar}
+                        alt={message.author.username}
+                        className="h-8 w-8 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="h-8 w-8 rounded-lg flex items-center justify-center text-white text-xs font-medium"
+                           style={{ backgroundColor: `hsl(${message.author?.username?.charCodeAt(0) * 137.5 % 360 || 0}, 70%, 50%)` }}>
+                        {message.author?.username?.charAt(0)?.toUpperCase() || 'U'}
+                      </div>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-2 mb-1">
-                      <span className="font-semibold text-gray-900">{message.author.username}</span>
+                      <span className="font-bold text-sm text-gray-900">{message.author.username}</span>
                       <span className="text-xs text-gray-500">
                         {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
-                    <MessageRenderer content={message.content} users={workspaceUsers} />
+                    <div className="text-sm leading-5 whitespace-pre-wrap break-words text-gray-900">
+                      <MessageRenderer 
+                        content={message.content} 
+                        mentions={(message as any).mentions || []}
+                        users={workspaceUsers} 
+                        isChannel={false}
+                      />
+                    </div>
                     
                     {/* File Display */}
                     {message.fileUrl && (
-                      <FileDisplay
-                        fileName={message.fileName || 'Unknown file'}
-                        fileSize={message.fileSize || 0}
-                        fileType={message.fileType || 'application/octet-stream'}
-                        fileUrl={message.fileUrl}
-                      />
+                      <div className="mt-2">
+                        <FileDisplay
+                          file={{
+                            url: message.fileUrl,
+                            name: message.fileName || 'Unknown file',
+                            size: message.fileSize || 0,
+                            type: message.fileType || 'application/octet-stream',
+                            path: message.fileUrl
+                          }}
+                          showDownloadButton={true}
+                          compact={false}
+                        />
+                      </div>
+                    )}
+
+                    {/* Auto-Reply Composer */}
+                    {showAutoReply === message._id && autoReplySelectedMessage && (
+                      <div className="mt-3">
+                        <AutoReplyComposer
+                          messageContent={autoReplySelectedMessage.content}
+                          channelContext={`DM with ${currentDMUser.username}`}
+                          onSelectReply={handleSelectAutoReply}
+                          className="bg-white"
+                        />
+                      </div>
                     )}
                     
-                    {/* Message Actions */}
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-1">
-                      <MessageActions
-                        message={message}
-                        reactions={message.reactions || []}
-                        onReact={() => {}}
-                        onReply={(parentMessage) => {
-                          setSelectedThreadMessage(parentMessage);
-                          setShowThreadSidebar(true);
-                        }}
-                      />
-                    </div>
+                    {/* Message Reactions - Always visible */}
+                    <MessageActions
+                      messageId={message._id}
+                      reactions={message.reactions || []}
+                      onReactionUpdate={(reactions) => handleUpdateMessageReactions(message._id, reactions)}
+                    />
                   </div>
                 </div>
               ))}
@@ -441,20 +520,44 @@ function DirectMessagesView() {
 
         {/* File Previews */}
         {uploadedFiles.length > 0 && (
-          <div className="px-6 py-2 bg-gray-50 border-t border-gray-200">
-            <div className="flex flex-wrap gap-2">
+          <div className="px-8 py-3 bg-gray-50 border-t border-gray-200">
+            <div className="space-y-2">
               {uploadedFiles.map((file, index) => (
-                <div key={index} className="relative bg-white border border-gray-200 rounded-lg p-2 flex items-center space-x-2">
-                  <FileDisplay
-                    fileName={file.name}
-                    fileSize={file.size}
-                    fileType={file.type}
-                    fileUrl={file.url}
-                  />
+                <div key={index} className="flex items-center space-x-3 bg-white rounded-md p-2.5 border border-gray-200">
+                  {/* File preview/icon */}
+                  <div className="flex items-center justify-center w-10 h-10 bg-gray-50 rounded-md border border-gray-200 overflow-hidden">
+                    {file.type.startsWith('image/') ? (
+                      <img 
+                        src={file.url} 
+                        alt={file.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          // Fallback to icon if image fails to load
+                          (e.target as HTMLImageElement).style.display = 'none';
+                          const icon = document.createElement('div');
+                          icon.innerHTML = '🖼️';
+                          icon.className = 'text-lg';
+                          (e.target as HTMLImageElement).parentNode?.appendChild(icon);
+                        }}
+                      />
+                    ) : (
+                      <div className="text-lg">
+                        {file.type === 'application/pdf' ? '📄' :
+                         file.type.includes('document') || file.type.includes('word') ? '📝' :
+                         file.type.includes('text') ? '📋' :
+                         '📎'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
+                    <p className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)}MB</p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => removeUploadedFile(file)}
-                    className="text-red-500 hover:text-red-700"
+                    className="flex items-center justify-center w-6 h-6 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded transition-colors"
+                    title="Remove file"
                   >
                     ×
                   </button>
@@ -465,49 +568,26 @@ function DirectMessagesView() {
         )}
 
         {/* Message Input */}
-        <div className="px-6 py-4 bg-white border-t border-gray-200">
-          <form onSubmit={handleSendMessage} className="relative">
-            <div className="flex items-end space-x-3">
-              <div className="flex-1 relative">
-                <textarea
-                  ref={textareaRef}
-                  value={newMessage}
-                  onChange={handleTextareaChange}
-                  placeholder={`Message ${currentDMUser.username}`}
-                  className="w-full resize-none border border-gray-300 rounded-lg px-4 py-3 pr-20 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  style={{
-                    minHeight: '2.25rem',
-                    maxHeight: '200px',
-                  }}
-                  disabled={sending}
-                />
-                
-                {/* Mention Dropdown */}
-                {showMentionDropdown && filteredMembers.length > 0 && (
-                  <div className="absolute bottom-full left-0 mb-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto z-20 w-64">
-                    {filteredMembers.map((member) => (
-                      <button
-                        key={member._id}
-                        type="button"
-                        onClick={() => insertMention(member.username)}
-                        className="w-full px-3 py-2.5 text-left hover:bg-gray-50 flex items-center space-x-2 border-b border-gray-100 last:border-b-0 first:rounded-t-lg last:rounded-b-lg"
-                      >
-                        <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
-                          {member.username.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">@{member.username}</p>
-                          <p className="text-xs text-gray-500 truncate">{member.email}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              
-              {/* Right Actions & Send Button */}
-              <div className="flex items-center space-x-1">
-                {/* File Upload */}
+        <div className="bg-white border-t border-gray-200">
+          {/* Tone & Impact Meter - Above Input */}
+          {newMessage.trim() && (
+            <div className="px-8 pt-3">
+              <ToneImpactMeter text={newMessage} />
+            </div>
+          )}
+          
+          <div className="px-8 py-3">
+            <form onSubmit={handleSendMessage} className="relative">
+            <div className="flex items-center space-x-3">
+              <UnifiedInput
+                value={newMessage}
+                onChange={setNewMessage}
+                onSubmit={handleSendMessage}
+                placeholder={`Message ${currentDMUser.username}`}
+                disabled={sending}
+                className="flex-1"
+              >
+                {/* Left side actions */}
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -517,6 +597,17 @@ function DirectMessagesView() {
                   <Paperclip className="w-4 h-4" />
                 </button>
                 
+                <button
+                  type="button"
+                  className="flex items-center justify-center w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                  title="Mention someone"
+                >
+                  <AtSign className="w-4 h-4" />
+                </button>
+              </UnifiedInput>
+              
+              {/* Right side actions */}
+              <div className="flex items-center space-x-2">
                 {/* Emoji Picker Button */}
                 <div className="relative" ref={emojiPickerRef}>
                   <button
@@ -544,10 +635,10 @@ function DirectMessagesView() {
                 <button
                   type="submit"
                   disabled={(!newMessage.trim() && uploadedFiles.length === 0) || sending}
-                  className={`flex items-center justify-center w-8 h-8 rounded-md transition-all ${
+                  className={`flex items-center justify-center w-9 h-9 rounded-md transition-all ${
                     (!newMessage.trim() && uploadedFiles.length === 0) || sending
-                      ? 'text-gray-400 cursor-not-allowed'
-                      : 'text-white bg-[#007a5a] hover:bg-[#006644] shadow-sm'
+                      ? 'text-gray-400 cursor-not-allowed bg-gray-100'
+                      : 'text-white bg-[#007a5a] hover:bg-[#006644] shadow-sm hover:shadow-md'
                   }`}
                   title="Send message"
                 >
@@ -559,7 +650,41 @@ function DirectMessagesView() {
                 </button>
               </div>
             </div>
+            
+            {/* Mention Dropdown */}
+            {showMentionDropdown && filteredMembers.length > 0 && (
+              <div className="absolute bottom-full left-0 mb-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto z-20 w-64">
+                {filteredMembers.map((member) => (
+                  <button
+                    key={member._id}
+                    type="button"
+                    onClick={() => insertMention(member.username)}
+                    className="w-full px-3 py-2.5 text-left hover:bg-gray-50 flex items-center space-x-2 border-b border-gray-100 last:border-b-0 first:rounded-t-lg last:rounded-b-lg"
+                  >
+                    <div className="flex-shrink-0">
+                      {member.avatar ? (
+                        <img
+                          src={member.avatar}
+                          alt={member.username}
+                          className="h-6 w-6 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="h-6 w-6 rounded-lg flex items-center justify-center text-white text-xs font-medium"
+                             style={{ backgroundColor: `hsl(${member.username?.charCodeAt(0) * 137.5 % 360 || 0}, 70%, 50%)` }}>
+                          {member.username?.charAt(0)?.toUpperCase() || 'U'}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">@{member.username}</p>
+                      <p className="text-xs text-gray-500 truncate">{member.email}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </form>
+          </div>
         </div>
 
         {/* Hidden File Input */}

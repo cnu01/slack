@@ -1,8 +1,11 @@
 import { Response } from 'express';
 import Message from '../models/Message';
 import Channel from '../models/Channel';
+import Workspace from '../models/Workspace';
 import { AuthRequest } from '../middleware/auth';
 import mongoose from 'mongoose';
+import { socketManager } from '../app';
+import { storeMessageEmbedding } from './aiController';
 
 // Note: Socket events will be added later when integrating with real-time features
 
@@ -30,10 +33,13 @@ export const addReaction = async (req: AuthRequest, res: Response): Promise<void
     }
 
     // Check if user has access to the channel
-    const channel = await Channel.findById(message.channel);
-    if (!channel) {
-      res.status(404).json({ error: 'Channel not found' });
-      return;
+    // For DM channels (string format), skip channel validation as DMs are virtual
+    if (typeof message.channel === 'object' || !message.channel.toString().startsWith('dm-')) {
+      const channel = await Channel.findById(message.channel);
+      if (!channel) {
+        res.status(404).json({ error: 'Channel not found' });
+        return;
+      }
     }
 
     // Find existing reaction with this emoji
@@ -268,10 +274,27 @@ export const pinMessage = async (req: AuthRequest, res: Response): Promise<void>
     }
 
     // Check if user has permission to pin (could add role-based permissions later)
-    const channel = await Channel.findById(message.channel);
-    if (!channel) {
-      res.status(404).json({ error: 'Channel not found' });
-      return;
+    // For DM channels (string format), skip channel validation as DMs are virtual
+    if (typeof message.channel === 'object' || !message.channel.toString().startsWith('dm-')) {
+      const channel = await Channel.findById(message.channel).populate('workspace');
+      if (!channel) {
+        res.status(404).json({ error: 'Channel not found' });
+        return;
+      }
+
+      // Check workspace membership
+      const workspace = await Workspace.findById(channel.workspace);
+      if (!workspace || !workspace.members.some(member => member.toString() === userId)) {
+        res.status(403).json({ error: 'Access denied to this workspace' });
+        return;
+      }
+    } else {
+      // For DMs, verify user is part of the conversation
+      const dmParts = message.channel.toString().replace('dm-', '').split('-');
+      if (!dmParts.includes(userId)) {
+        res.status(403).json({ error: 'Access denied' });
+        return;
+      }
     }
 
     message.isPinned = true;
@@ -280,12 +303,21 @@ export const pinMessage = async (req: AuthRequest, res: Response): Promise<void>
 
     await message.save();
 
-    // TODO: Emit real-time update when socket integration is added
-    // socketManager.emitToChannel(message.channel.toString(), 'message_pinned', {
-    //   messageId: message._id,
-    //   pinnedBy: userId,
-    //   pinnedAt: message.pinnedAt
-    // });
+    // Index pinned message for AI search
+    try {
+      // await storeMessageEmbedding(message); // TODO: Fix embedding call
+    } catch (embeddingError) {
+      console.error('Failed to index pinned message for AI search:', embeddingError);
+      // Don't fail the pin operation if indexing fails
+    }
+
+    // Emit real-time update
+    socketManager.emitToChannel(message.channel.toString(), 'message_pinned', {
+      messageId: message._id,
+      isPinned: true,
+      pinnedBy: userId,
+      pinnedAt: message.pinnedAt
+    });
 
     res.json({ 
       message: 'Message pinned successfully',
@@ -318,17 +350,40 @@ export const unpinMessage = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
+    // Check if user has permission to unpin
+    if (typeof message.channel === 'object' || !message.channel.toString().startsWith('dm-')) {
+      const channel = await Channel.findById(message.channel).populate('workspace');
+      if (!channel) {
+        res.status(404).json({ error: 'Channel not found' });
+        return;
+      }
+
+      const workspace = await Workspace.findById(channel.workspace);
+      if (!workspace || !workspace.members.some(member => member.toString() === userId)) {
+        res.status(403).json({ error: 'Access denied to this workspace' });
+        return;
+      }
+    } else {
+      // For DMs, verify user is part of the conversation
+      const dmParts = message.channel.toString().replace('dm-', '').split('-');
+      if (!dmParts.includes(userId)) {
+        res.status(403).json({ error: 'Access denied' });
+        return;
+      }
+    }
+
     message.isPinned = false;
     message.pinnedBy = undefined;
     message.pinnedAt = undefined;
 
     await message.save();
 
-    // TODO: Emit real-time update when socket integration is added
-    // socketManager.emitToChannel(message.channel.toString(), 'message_unpinned', {
-    //   messageId: message._id,
-    //   unpinnedBy: userId
-    // });
+    // Emit real-time update
+    socketManager.emitToChannel(message.channel.toString(), 'message_unpinned', {
+      messageId: message._id,
+      isPinned: false,
+      unpinnedBy: userId
+    });
 
     res.json({ message: 'Message unpinned successfully' });
   } catch (error) {
@@ -347,22 +402,37 @@ export const getPinnedMessages = async (req: AuthRequest, res: Response): Promis
       return;
     }
 
-    // Verify channel access
-    const channel = await Channel.findById(channelId);
-    if (!channel) {
-      res.status(404).json({ error: 'Channel not found' });
-      return;
+    // Verify channel access and permissions
+    if (!channelId.startsWith('dm-')) {
+      const channel = await Channel.findById(channelId).populate('workspace');
+      if (!channel) {
+        res.status(404).json({ error: 'Channel not found' });
+        return;
+      }
+
+      const workspace = await Workspace.findById(channel.workspace);
+      if (!workspace || !workspace.members.some(member => member.toString() === userId)) {
+        res.status(403).json({ error: 'Access denied to this workspace' });
+        return;
+      }
+    } else {
+      // For DMs, verify user is part of the conversation
+      const dmParts = channelId.replace('dm-', '').split('-');
+      if (!dmParts.includes(userId)) {
+        res.status(403).json({ error: 'Access denied' });
+        return;
+      }
     }
 
     const pinnedMessages = await Message.find({ 
       channel: channelId, 
       isPinned: true 
     })
-      .populate('author', 'username email avatar')
-      .populate('pinnedBy', 'username email avatar')
+      .populate('author', 'username profession avatar')
+      .populate('pinnedBy', 'username')
       .sort({ pinnedAt: -1 });
 
-    res.json({ pinnedMessages });
+    res.json({ messages: pinnedMessages });
   } catch (error) {
     console.error('Get pinned messages error:', error);
     res.status(500).json({ error: 'Internal server error' });

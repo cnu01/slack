@@ -166,24 +166,37 @@ export const getProfile = async (req: AuthRequest, res: Response): Promise<void>
 export const updateAvatar = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user?.userId;
-    const { avatarUrl } = req.body;
     
     if (!userId) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
 
-    if (!avatarUrl || typeof avatarUrl !== 'string') {
-      res.status(400).json({ error: 'Avatar URL is required' });
-      return;
-    }
+    let avatarUrl: string;
 
-    // Validate URL format (basic validation)
-    try {
-      new URL(avatarUrl);
-    } catch {
-      res.status(400).json({ error: 'Invalid avatar URL format' });
-      return;
+    // Check if a file was uploaded
+    if ((req as any).file) {
+      // File upload - use the uploaded file path
+      const file = (req as any).file;
+      avatarUrl = `http://localhost:5001/uploads/avatars/${file.filename}`;
+      console.log('📷 Avatar file uploaded:', file.filename);
+    } else {
+      // URL update - use the provided avatar URL
+      const { avatarUrl: providedUrl } = req.body;
+      
+      if (!providedUrl || typeof providedUrl !== 'string') {
+        res.status(400).json({ error: 'Avatar file or URL is required' });
+        return;
+      }
+
+      // Validate URL format (basic validation)
+      try {
+        new URL(providedUrl);
+        avatarUrl = providedUrl;
+      } catch {
+        res.status(400).json({ error: 'Invalid avatar URL format' });
+        return;
+      }
     }
 
     // Update user's avatar
@@ -211,7 +224,8 @@ export const updateAvatar = async (req: AuthRequest, res: Response): Promise<voi
 
     res.json({ 
       message: 'Avatar updated successfully', 
-      user: userData 
+      user: userData,
+      avatarUrl: avatarUrl
     });
   } catch (error) {
     console.error('Update avatar error:', error);

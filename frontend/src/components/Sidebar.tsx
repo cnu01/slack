@@ -2,7 +2,7 @@ import { Hash, Lock, ChevronDown, Plus, Circle, MessageSquare, Activity, LogOut,
 import { useAppStore } from '../store/appStore';
 import { apiClient } from '../lib/api';
 import { socketClient } from '../lib/socketClient';
-import { AvatarUploadService } from '../lib/avatarUploadService';
+// import { BackendAvatarService } from '../lib/backendAvatarService'; // Avatar functionality removed for now
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import OrgBrainSidebar from './OrgBrainSidebar';
@@ -81,18 +81,9 @@ function Sidebar() {
     try {
       setLoading(true);
       
-      // Upload to Firebase Storage
-      console.log('🚀 Starting avatar upload...');
-      const uploadResult = await AvatarUploadService.uploadAvatar(avatarFile, user._id);
-      console.log('✅ Avatar uploaded to Firebase:', uploadResult.url);
-      
-      // Update avatar URL in backend
-      const response = await apiClient.updateAvatar(uploadResult.url);
-      console.log('✅ Avatar URL saved to backend');
-      
-      // Update user in store
-      useAppStore.getState().setAuth(response.user, localStorage.getItem('token') || '');
-      console.log('✅ User updated in store');
+      // Avatar upload functionality temporarily disabled
+      console.log('📝 Avatar upload feature is currently disabled');
+      alert('Avatar upload feature is temporarily disabled. Please try again later.');
       
       // Reset form
       setShowProfileModal(false);

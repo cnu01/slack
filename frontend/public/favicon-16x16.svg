@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Purple background -->
+  <rect width="16" height="16" rx="3" fill="#9333ea"/>
+  
+  <!-- Sparkles icon in white -->
+  <g fill="white" stroke="white" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Main sparkle -->
+    <path d="M8 3l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/>
+    <!-- Small sparkle top right -->
+    <path d="M12 2l0.5 1 1 0.5-1 0.5-0.5 1-0.5-1-1-0.5 1-0.5z"/>
+    <!-- Small sparkle bottom left -->
+    <path d="M4 12l0.5 1 1 0.5-1 0.5-0.5 1-0.5-1-1-0.5 1-0.5z"/>
+  </g>
+</svg>

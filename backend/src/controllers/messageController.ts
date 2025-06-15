@@ -108,8 +108,15 @@ export const sendMessage = async (req: AuthRequest, res: Response): Promise<void
       return;
     }
 
-    if (!content || content.trim() === '') {
-      res.status(400).json({ error: 'Message content is required' });
+    // For file messages, content can be empty; for text messages, content is required
+    if (messageType === 'text' && (!content || content.trim() === '')) {
+      res.status(400).json({ error: 'Message content is required for text messages' });
+      return;
+    }
+
+    // For file messages, validate file data
+    if ((messageType === 'file' || messageType === 'image') && !fileUrl) {
+      res.status(400).json({ error: 'File URL is required for file messages' });
       return;
     }
 
@@ -153,7 +160,7 @@ export const sendMessage = async (req: AuthRequest, res: Response): Promise<void
 
     // Create the message
     const messageData: any = {
-      content: content.trim(),
+      content: content ? content.trim() : '', // Handle empty content for file messages
       author: userId,
       channel: actualChannelId,
       workspace: workspaceId, // null for DMs

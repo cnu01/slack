@@ -9,8 +9,8 @@ import MessageActions from './MessageActions';
 import ThreadSidebar from './ThreadSidebar';
 import { MessageRenderer } from './MessageRenderer';
 import { parseMentions } from '../utils/mentionUtils';
-import type { UploadedFile } from '../lib/fileUploadService';
-import { fileUploadService } from '../lib/fileUploadService';
+import type { UploadedFile } from '../lib/backendFileUploadService';
+import { backendFileUploadService } from '../lib/backendFileUploadService';
 import UnifiedInput from './UnifiedInput';
 import type { UnifiedInputRef } from './UnifiedInput';
 import ToneImpactMeter from './ToneImpactMeter';
@@ -281,12 +281,8 @@ function DirectMessagesView() {
         for (const file of Array.from(files)) {
           console.log('🔄 Uploading dropped file:', file.name);
           
-          // Upload file to Firebase storage
-          const uploadedFile = await fileUploadService.uploadFile(
-            file, 
-            currentWorkspace._id, 
-            `dm-${currentDMUser._id}` // Use DM user ID as channel for DMs
-          );
+          // Upload file to backend storage
+          const uploadedFile = await backendFileUploadService.uploadFile(file);
           
           console.log('✅ Dropped file uploaded successfully:', uploadedFile);
           setUploadedFiles(prev => [...prev, uploadedFile]);
@@ -310,12 +306,8 @@ function DirectMessagesView() {
         for (const file of files) {
           console.log('🔄 Uploading selected file:', file.name);
           
-          // Upload file to Firebase storage
-          const uploadedFile = await fileUploadService.uploadFile(
-            file, 
-            currentWorkspace._id, 
-            `dm-${currentDMUser._id}` // Use DM user ID as channel for DMs
-          );
+          // Upload file to backend storage
+          const uploadedFile = await backendFileUploadService.uploadFile(file);
           
           console.log('✅ Selected file uploaded successfully:', uploadedFile);
           setUploadedFiles(prev => [...prev, uploadedFile]);

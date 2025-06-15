@@ -41,7 +41,10 @@ export interface IMessage extends Document {
 const messageSchema = new Schema<IMessage>({
   content: {
     type: String,
-    required: [true, 'Message content is required'],
+    required: function(this: IMessage) {
+      // Content is required for text messages, but optional for file/image messages
+      return this.messageType === 'text';
+    },
     maxlength: [4000, 'Message cannot exceed 4000 characters']
   },
   author: {

@@ -21,6 +21,7 @@ import channelRoutes from './routes/channels';
 import messageRoutes from './routes/messages';
 import messageActionRoutes from './routes/messageActions';
 import aiRoutes from './routes/ai';
+import fileRoutes from './routes/files';
 
 const app = express();
 const server = createServer(app);
@@ -65,6 +66,7 @@ app.use('/api/channels', authenticateToken, channelRoutes);
 app.use('/api/messages', authenticateToken, messageRoutes);
 app.use('/api/message-actions', messageActionRoutes);
 app.use('/api/ai', authenticateToken, aiRoutes);
+app.use('/api/files', fileRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

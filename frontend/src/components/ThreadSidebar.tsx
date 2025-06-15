@@ -5,8 +5,8 @@ import { apiClient } from '../lib/api';
 import { useAppStore } from '../store/appStore';
 import { MessageRenderer } from './MessageRenderer';
 import { parseMentions } from '../utils/mentionUtils';
-import type { UploadedFile } from '../lib/fileUploadService';
-import { fileUploadService } from '../lib/fileUploadService';
+import type { UploadedFile } from '../lib/backendFileUploadService';
+import { backendFileUploadService } from '../lib/backendFileUploadService';
 import UnifiedInput from './UnifiedInput';
 import ThreadSummaryGenerator from './ThreadSummaryGenerator';
 
@@ -146,11 +146,7 @@ const ThreadSidebar: React.FC<ThreadSidebarProps> = ({ isOpen, onClose, parentMe
       
       for (const file of Array.from(files)) {
         console.log('🔄 Uploading thread file:', file.name);
-        const uploadedFile = await fileUploadService.uploadFile(
-          file,
-          currentWorkspace?._id || 'unknown-workspace',
-          currentChannel._id
-        );
+        const uploadedFile = await backendFileUploadService.uploadFile(file);
         console.log('✅ Thread file uploaded successfully:', uploadedFile);
         setFileUploads(prev => [...prev, uploadedFile]);
       }

@@ -1,6 +1,6 @@
 import { Download, ExternalLink, File } from 'lucide-react';
-import { fileUploadService } from '../lib/fileUploadService';
-import type { UploadedFile } from '../lib/fileUploadService';
+import { backendFileUploadService } from '../lib/backendFileUploadService';
+import type { UploadedFile } from '../lib/backendFileUploadService';
 
 interface FileDisplayProps {
   file: UploadedFile;
@@ -26,7 +26,7 @@ function FileDisplay({ file, showDownloadButton = true, compact = false }: FileD
   if (compact) {
     return (
       <div className="inline-flex items-center space-x-2 bg-gray-100 rounded-lg px-3 py-2 text-sm">
-        <span className="text-lg">{fileUploadService.getFileIcon(file.type)}</span>
+        <span className="text-lg">{backendFileUploadService.getFileIcon(file.type)}</span>
         <span className="font-medium text-gray-700 truncate max-w-32">{file.name}</span>
         <button
           onClick={handleDownload}
@@ -40,7 +40,7 @@ function FileDisplay({ file, showDownloadButton = true, compact = false }: FileD
   }
 
   // Image display
-  if (fileUploadService.isImage(file.type)) {
+  if (backendFileUploadService.isImage(file.type)) {
     return (
       <div className="max-w-md">
         <div className="relative group">
@@ -77,7 +77,7 @@ function FileDisplay({ file, showDownloadButton = true, compact = false }: FileD
         {/* File info */}
         <div className="mt-2 text-xs text-gray-500">
           <p className="font-medium">{file.name}</p>
-          <p>{fileUploadService.formatFileSize(file.size)}</p>
+          <p>{backendFileUploadService.formatFileSize(file.size)}</p>
         </div>
       </div>
     );
@@ -105,7 +105,7 @@ function FileDisplay({ file, showDownloadButton = true, compact = false }: FileD
         {/* File Info */}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
-          <p className="text-xs text-gray-500">{fileUploadService.formatFileSize(file.size)}</p>
+          <p className="text-xs text-gray-500">{backendFileUploadService.formatFileSize(file.size)}</p>
           
           {/* File type badge */}
           <span className="inline-block mt-1 px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded-full">

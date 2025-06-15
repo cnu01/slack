@@ -11,8 +11,8 @@ import ThreadSidebar from './ThreadSidebar';
 import MessageMenu from './MessageMenu';
 import { MessageRenderer } from './MessageRenderer';
 import { parseMentions } from '../utils/mentionUtils';
-import type { UploadedFile } from '../lib/fileUploadService';
-import { fileUploadService } from '../lib/fileUploadService';
+import type { UploadedFile } from '../lib/backendFileUploadService';
+import { backendFileUploadService } from '../lib/backendFileUploadService';
 import ToneImpactMeter from './ToneImpactMeter';
 import AutoReplyComposer from './AutoReplyComposer';
 import MeetingNotesGenerator from './MeetingNotesGenerator';
@@ -287,23 +287,24 @@ function MessagingArea() {  const {
       for (const file of uploadedFiles) {
         console.log('🚀 Sending file message to channel:', currentChannel._id);
         
-        // Create a proper file message
-        // const fileMessageData = {
-        //   content: ``, // Empty content for file messages
-        //   messageType: file.type.startsWith('image/') ? 'image' : 'file' as const,
-        //   fileUrl: file.url,
-        //   fileName: file.name,
-        //   fileSize: file.size,
-        //   fileType: file.type
-        // };
+        // Send proper file message with file data using the existing sendMessage method
+        const messageType = file.type.startsWith('image/') ? 'image' : 'file' as const;
+        const fileData = {
+          fileUrl: file.url,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type
+        };
         
-        // For now, send as text message with file info until we update backend
-        const fileMessage = `📎 Uploaded: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`;
-        const response = await apiClient.sendMessage(currentChannel._id, fileMessage, []);
+        console.log('📎 Sending file message data:', { messageType, fileData });
+        const response = await apiClient.sendMessage(
+          currentChannel._id, 
+          '', // Empty content for file messages
+          [], // No mentions for file messages
+          messageType,
+          fileData
+        );
         console.log('✅ File message sent successfully:', response.message);
-        
-        // TODO: Update this when backend supports file messages properly
-        // const response = await apiClient.sendFileMessage(currentChannel._id, fileMessageData);
       }
       
       // Clear inputs
@@ -372,7 +373,7 @@ function MessagingArea() {  const {
     const validFiles = files.filter(file => {
       const isValidSize = file.size <= 5 * 1024 * 1024; // 5MB
       const isValidType = [
-        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
         'application/pdf', 'text/plain', 
         'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       ].includes(file.type);
@@ -389,15 +390,11 @@ function MessagingArea() {  const {
 
     console.log('📎 Valid files after filtering:', validFiles.length);
 
-    // Upload files to Firebase and get real URLs
+    // Upload files to backend and get real URLs
     for (const file of validFiles) {
       try {
-        console.log('🔄 Uploading file to Firebase:', file.name);
-        const uploadedFile = await fileUploadService.uploadFile(
-          file,
-          currentWorkspace._id,
-          currentChannel._id
-        );
+        console.log('🔄 Uploading file to backend:', file.name);
+        const uploadedFile = await backendFileUploadService.uploadFile(file);
         console.log('✅ File uploaded successfully:', uploadedFile);
         setUploadedFiles(prev => [...prev, uploadedFile]);
       } catch (error) {
@@ -1077,7 +1074,6 @@ function MessagingArea() {  const {
                     onClick={() => {
                       console.log('📎 Paperclip button clicked');
                       console.log('📎 File input ref:', fileInputRef.current);
-                      alert('File upload button clicked! Check console for logs.');
                       fileInputRef.current?.click();
                     }}
                     className="flex items-center justify-center w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"

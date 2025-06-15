@@ -1171,7 +1171,9 @@ function MessagingArea() {  const {
                 <div className="flex items-center space-x-1 px-3 py-2">
                   <button
                     type="button"
-                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    onClick={() => {
+                      setShowEmojiPicker(!showEmojiPicker);
+                    }}
                     className="flex items-center justify-center w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
                     title="Add emoji"
                   >
@@ -1204,8 +1206,8 @@ function MessagingArea() {  const {
       
       {/* Emoji Picker - Floating above input */}
       {showEmojiPicker && (
-        <div className="absolute bottom-full left-0 mb-2">
-          <div ref={emojiPickerRef} className="bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-20">
+        <div className="fixed bottom-24 right-8 z-50">
+          <div ref={emojiPickerRef} className="bg-white border border-gray-200 rounded-lg shadow-xl">
             <EmojiPicker 
               onEmojiClick={handleEmojiSelect}
               searchDisabled

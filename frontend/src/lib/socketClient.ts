@@ -17,6 +17,7 @@ interface PresenceUpdate {
 interface TypingStatus {
   userId: string;
   username: string;
+  channelId: string;
   isTyping: boolean;
 }
 
@@ -107,32 +108,33 @@ class SocketClient {
     });
   }
 
-  // Join/leave rooms
+  // Send message (used for real-time broadcasting)
+  sendMessage(messageData: any) {
+    if (this.socket) {
+      this.socket.emit('new_message', messageData);
+      console.log('📤 Sent message via socket:', messageData);
+    }
+  }
+
+  // Room management
   joinWorkspace(workspaceId: string) {
     if (this.socket) {
-      console.log('📋 Joining workspace:', workspaceId);
       this.socket.emit('join_workspace', workspaceId);
+      console.log('🔗 Joined workspace room:', workspaceId);
     }
   }
 
   joinChannel(channelId: string) {
     if (this.socket) {
-      console.log('🏷️ Joining channel:', channelId);
       this.socket.emit('join_channel', channelId);
+      console.log('🔗 Joined channel room:', channelId);
     }
   }
 
   leaveChannel(channelId: string) {
     if (this.socket) {
-      console.log('👋 Leaving channel:', channelId);
       this.socket.emit('leave_channel', channelId);
-    }
-  }
-
-  // Send message (used for real-time broadcasting)
-  sendMessage(messageData: any) {
-    if (this.socket) {
-      this.socket.emit('new_message', messageData);
+      console.log('🔌 Left channel room:', channelId);
     }
   }
 

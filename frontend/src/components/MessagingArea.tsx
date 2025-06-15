@@ -25,8 +25,6 @@ function MessagingArea() {  const {
     setMessages,
     addMessage,
     typingUsers,
-    addTypingUser,
-    removeTypingUser,
     toggleSidebar,
     workspaceUsers
   } = useAppStore();
@@ -67,6 +65,8 @@ function MessagingArea() {  const {
       // Reset messages when switching channels
       setMessages([]);
       loadMessages();
+      // Join the channel room for real-time events
+      socketClient.joinChannel(currentChannel._id);
     }
   }, [currentChannel?._id]); // Depend on channel ID, not the whole object
 
@@ -86,36 +86,10 @@ function MessagingArea() {  const {
       }
     });
 
-    const unsubscribeTyping = socketClient.onTyping((typing) => {
-      if (currentChannel && typing.isTyping) {
-        addTypingUser(currentChannel._id, typing.username);
-        
-        // Remove typing status after 3 seconds
-        setTimeout(() => {
-          removeTypingUser(currentChannel._id, typing.username);
-        }, 3000);
-      } else if (currentChannel) {
-        removeTypingUser(currentChannel._id, typing.username);
-      }
-    });
-
     return () => {
       unsubscribeMessage();
-      unsubscribeTyping();
     };
-  }, [currentChannel, addMessage, addTypingUser, removeTypingUser]);
-
-  // Join channel in socket when channel changes
-  useEffect(() => {
-    if (currentChannel) {
-      socketClient.joinChannel(currentChannel._id);
-      return () => {
-        if (currentChannel) {
-          socketClient.leaveChannel(currentChannel._id);
-        }
-      };
-    }
-  }, [currentChannel]);
+  }, [currentChannel, addMessage]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -170,7 +144,7 @@ function MessagingArea() {  const {
     }
   };
 
-  // Pin/Unpin message
+  // Pin/Unpin message (currently unused but may be needed for message actions)
   const handlePinMessage = async (messageId: string) => {
     try {
       console.log('📌 Pinning message:', messageId);
@@ -281,6 +255,12 @@ function MessagingArea() {  const {
         
         const response = await apiClient.sendMessage(currentChannel._id, newMessage.trim(), mentions);
         console.log('✅ Text message sent successfully:', response.message);
+        
+        // Broadcast message via socket for real-time updates
+        socketClient.sendMessage({
+          ...response.message,
+          channel: currentChannel._id
+        });
       }
 
       // Send file messages for each uploaded file
@@ -305,6 +285,12 @@ function MessagingArea() {  const {
           fileData
         );
         console.log('✅ File message sent successfully:', response.message);
+        
+        // Broadcast file message via socket for real-time updates
+        socketClient.sendMessage({
+          ...response.message,
+          channel: currentChannel._id
+        });
       }
       
       // Clear inputs
@@ -983,13 +969,20 @@ function MessagingArea() {  const {
 
       {/* Typing Indicators - Fixed above input */}
       {currentChannel && typingUsers[currentChannel._id] && typingUsers[currentChannel._id].length > 0 && (
-        <div className="px-8 py-2 text-sm flex-shrink-0" style={{ color: '#616061', borderTop: '1px solid #E1E1E1' }}>
-          {typingUsers[currentChannel._id].length === 1 
-            ? `${typingUsers[currentChannel._id][0]} is typing...`
-            : typingUsers[currentChannel._id].length === 2
-            ? `${typingUsers[currentChannel._id][0]} and ${typingUsers[currentChannel._id][1]} are typing...`
-            : `${typingUsers[currentChannel._id].slice(0, -1).join(', ')} and ${typingUsers[currentChannel._id].slice(-1)} are typing...`
-          }
+        <div className="px-8 py-2 text-sm flex-shrink-0 flex items-center space-x-2" style={{ color: '#616061', borderTop: '1px solid #E1E1E1' }}>
+          <span>
+            {typingUsers[currentChannel._id].length === 1 
+              ? `${typingUsers[currentChannel._id][0]} is typing`
+              : typingUsers[currentChannel._id].length === 2
+              ? `${typingUsers[currentChannel._id][0]} and ${typingUsers[currentChannel._id][1]} are typing`
+              : `${typingUsers[currentChannel._id].slice(0, -1).join(', ')} and ${typingUsers[currentChannel._id].slice(-1)} are typing`
+            }
+          </span>
+          <div className="flex space-x-0.5">
+            <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
         </div>
       )}
 

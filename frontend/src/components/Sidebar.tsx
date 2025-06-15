@@ -23,6 +23,9 @@ function Sidebar() {
     setCurrentView,
     updateUserPresence,
     workspaceUsers,
+    typingUsers,
+    addTypingUser,
+    removeTypingUser,
     setWorkspaceUsers
   } = useAppStore();
 
@@ -41,6 +44,8 @@ function Sidebar() {
     if (currentWorkspace && !channelsLoaded) {
       loadChannels();
       loadWorkspaceUsers();
+      // Join the workspace room for real-time events
+      socketClient.joinWorkspace(currentWorkspace._id);
     } else if (!currentWorkspace) {
       setChannelsLoaded(false);
     }
@@ -56,6 +61,33 @@ function Sidebar() {
       unsubscribePresence();
     };
   }, [updateUserPresence]);
+
+  // Global typing listener for all conversations (DMs and channels)
+  useEffect(() => {
+    const unsubscribeTyping = socketClient.onTyping((typing) => {
+      console.log('🔄 Global typing indicator received:', typing);
+      
+      // Extract channel/conversation ID from the typing event
+      const channelId = typing.channelId;
+      
+      if (channelId) {
+        if (typing.isTyping) {
+          addTypingUser(channelId, typing.username);
+          
+          // Remove typing status after 3 seconds
+          setTimeout(() => {
+            removeTypingUser(channelId, typing.username);
+          }, 3000);
+        } else {
+          removeTypingUser(channelId, typing.username);
+        }
+      }
+    });
+
+    return () => {
+      unsubscribeTyping();
+    };
+  }, [addTypingUser, removeTypingUser]);
 
   const handleLogout = () => {
     localStorage.clear();
@@ -102,6 +134,25 @@ function Sidebar() {
   const handleDMUserClick = (dmUser: any) => {
     setCurrentDMUser(dmUser);
     setCurrentView('dms');
+  };
+
+  // Helper function to generate DM conversation ID
+  const getDMConversationId = (otherUserId: string): string => {
+    if (!user?._id) return '';
+    const sortedIds = [user._id, otherUserId].sort();
+    return `dm-${sortedIds[0]}-${sortedIds[1]}`;
+  };
+
+  // Helper function to check if user is typing in DM
+  const isUserTypingInDM = (otherUserId: string): boolean => {
+    const conversationId = getDMConversationId(otherUserId);
+    const currentTyping = typingUsers[conversationId] || [];
+    // Check if the other user (not current user) is typing
+    return currentTyping.some(username => {
+      // Find the user by username and check if it's not the current user
+      const typingUser = workspaceUsers.find(u => u.username === username);
+      return typingUser && typingUser._id === otherUserId;
+    });
   };
 
   const loadChannels = async () => {
@@ -273,22 +324,32 @@ function Sidebar() {
           </div>
           
           <div className="space-y-1">
-            {channels.map((channel: any) => (
-              <button
-                key={channel._id}
-                onClick={() => handleChannelClick(channel)}
-                className={`w-full flex items-center space-x-2 px-2 py-1 rounded text-sm transition-colors ${
-                  currentChannel?._id === channel._id ? 'bg-purple-600 text-white' : 'text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                {channel.isPrivate ? (
-                  <Lock className="w-4 h-4 text-gray-400" />
-                ) : (
-                  <Hash className="w-4 h-4 text-gray-400" />
-                )}
-                <span className="truncate">{channel.name}</span>
-              </button>
-            ))}
+            {channels.map((channel: any) => {
+              const isTyping = typingUsers[channel._id] && typingUsers[channel._id].length > 0;
+              return (
+                <button
+                  key={channel._id}
+                  onClick={() => handleChannelClick(channel)}
+                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded text-sm transition-colors ${
+                    currentChannel?._id === channel._id ? 'bg-purple-600 text-white' : 'text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  {channel.isPrivate ? (
+                    <Lock className="w-4 h-4 text-gray-400" />
+                  ) : (
+                    <Hash className="w-4 h-4 text-gray-400" />
+                  )}
+                  <span className="truncate">{channel.name}</span>
+                  {isTyping && (
+                    <div className="flex space-x-0.5 ml-auto">
+                      <div className="w-1 h-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-1 h-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-1 h-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -302,16 +363,26 @@ function Sidebar() {
           </div>
           
           <div className="space-y-1">
-            {workspaceUsers.slice(0, 5).map((userItem: any) => (
-              <button
-                key={userItem._id}
-                onClick={() => handleDMUserClick(userItem)}
-                className="w-full flex items-center space-x-2 px-2 py-1 rounded text-sm text-gray-300 hover:bg-gray-700 transition-colors"
-              >
-                {getStatusIcon(userItem.status)}
-                <span className="truncate">{userItem.username}</span>
-              </button>
-            ))}
+            {workspaceUsers.slice(0, 5).map((userItem: any) => {
+              const isTyping = isUserTypingInDM(userItem._id);
+              return (
+                <button
+                  key={userItem._id}
+                  onClick={() => handleDMUserClick(userItem)}
+                  className="w-full flex items-center space-x-2 px-2 py-1 rounded text-sm text-gray-300 hover:bg-gray-700 transition-colors"
+                >
+                  {getStatusIcon(userItem.status)}
+                  <span className="truncate">{userItem.username}</span>
+                  {isTyping && (
+                    <div className="flex space-x-0.5 ml-auto">
+                      <div className="w-1 h-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-1 h-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-1 h-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>

@@ -24,7 +24,10 @@ function DirectMessagesView() {
     setMessages,
     addMessage,
     workspaceUsers,
-    toggleSidebar
+    toggleSidebar,
+    typingUsers,
+    addTypingUser,
+    removeTypingUser
   } = useAppStore();
 
   const [newMessage, setNewMessage] = useState('');
@@ -34,12 +37,12 @@ function DirectMessagesView() {
   const [dragOver, setDragOver] = useState(false);
   const [showThreadSidebar, setShowThreadSidebar] = useState(false);
   const [selectedThreadMessage, setSelectedThreadMessage] = useState<any>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: any } | null>(null);
+  // const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: any } | null>(null);
   
   // Mention functionality
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
-  const [mentionPosition, setMentionPosition] = useState(0);
+  const [mentionPosition] = useState(0);
   
   // Emoji picker state
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -68,12 +71,12 @@ function DirectMessagesView() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Close context menu when clicking outside
-  useEffect(() => {
-    const handleClick = () => setContextMenu(null);
-    document.addEventListener('click', handleClick);
-    return () => document.removeEventListener('click', handleClick);
-  }, []);
+  // Close context menu when clicking outside (commented out for now)
+  // useEffect(() => {
+  //   const handleClick = () => setContextMenu(null);
+  //   document.addEventListener('click', handleClick);
+  //   return () => document.removeEventListener('click', handleClick);
+  // }, []);
 
   // Close emoji picker when clicking outside
   useEffect(() => {
@@ -98,6 +101,9 @@ function DirectMessagesView() {
     
     console.log('🔄 Setting up DM conversation:', conversationId);
 
+    // Join the DM channel room for real-time events
+    socketClient.joinChannel(conversationId);
+
     // Setup socket listeners
     const unsubscribers: (() => void)[] = [];
 
@@ -113,7 +119,16 @@ function DirectMessagesView() {
     // Listen for typing indicators
     const unsubscribeTyping = socketClient.onTyping((typing) => {
       console.log('⌨️ DM typing indicator:', typing);
-      // Handle typing indicators for DMs if needed
+      if (typing.isTyping) {
+        addTypingUser(conversationId, typing.username);
+        
+        // Remove typing status after 3 seconds
+        setTimeout(() => {
+          removeTypingUser(conversationId, typing.username);
+        }, 3000);
+      } else {
+        removeTypingUser(conversationId, typing.username);
+      }
     });
 
     unsubscribers.push(unsubscribeMessage, unsubscribeTyping);
@@ -179,6 +194,13 @@ function DirectMessagesView() {
         console.log('📝 Sending DM message with mentions:', mentions);
         const response = await apiClient.sendDMMessage(currentDMUser._id, newMessage.trim(), mentions);
         console.log('✅ DM message sent successfully:', response.message);
+        
+        // Broadcast DM message via socket for real-time updates
+        const conversationId = getDMConversationId();
+        socketClient.sendMessage({
+          ...response.message,
+          channel: conversationId
+        });
       }
 
       // Send file messages for each uploaded file
@@ -187,6 +209,13 @@ function DirectMessagesView() {
         const fileMessage = `📎 Uploaded: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`;
         const response = await apiClient.sendDMMessage(currentDMUser._id, fileMessage, []);
         console.log('✅ File DM message sent successfully:', response.message);
+        
+        // Broadcast DM file message via socket for real-time updates
+        const conversationId = getDMConversationId();
+        socketClient.sendMessage({
+          ...response.message,
+          channel: conversationId
+        });
       }
 
       // Clear inputs
@@ -335,11 +364,11 @@ function DirectMessagesView() {
     setSelectedThreadMessage(null);
   };
 
-  const handleMessageContextMenu = (e: React.MouseEvent, message: any) => {
-    e.preventDefault();
-    // For now, disable message menu in DMs
-    console.log('Message context menu:', message);
-  };
+  // const handleMessageContextMenu = (e: React.MouseEvent, message: any) => {
+  //   e.preventDefault();
+  //   // For now, disable message menu in DMs
+  //   console.log('Message context menu:', message);
+  // };
 
   // Get mention suggestions
   const getMentionSuggestions = () => {
@@ -505,6 +534,49 @@ function DirectMessagesView() {
                   </div>
                 </div>
               ))}
+              
+              {/* Typing Indicator */}
+              {(() => {
+                const conversationId = getDMConversationId();
+                const currentUserTyping = conversationId ? typingUsers[conversationId] : [];
+                const otherUserTyping = currentUserTyping?.filter((username: string) => username !== JSON.parse(localStorage.getItem('user') || '{}').username);
+                
+                if (otherUserTyping && otherUserTyping.length > 0) {
+                  return (
+                    <div className="flex items-start space-x-3 px-8 py-2">
+                      <div className="flex-shrink-0">
+                        {currentDMUser?.avatar ? (
+                          <img
+                            src={currentDMUser.avatar}
+                            alt={currentDMUser.username}
+                            className="h-8 w-8 rounded-lg object-cover"
+                          />
+                        ) : (
+                          <div className="h-8 w-8 rounded-lg flex items-center justify-center text-white text-xs font-medium"
+                               style={{ backgroundColor: `hsl(${currentDMUser?.username?.charCodeAt(0) * 137.5 % 360 || 0}, 70%, 50%)` }}>
+                            {currentDMUser?.username?.charAt(0)?.toUpperCase() || 'U'}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <span className="font-bold text-sm text-gray-900">{currentDMUser?.username}</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <div className="flex space-x-1">
+                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                          </div>
+                          <span className="text-xs text-gray-500 ml-2">typing...</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              
               <div ref={messagesEndRef} />
             </div>
           )}
@@ -573,7 +645,10 @@ function DirectMessagesView() {
             <div className="flex items-center space-x-3">
               <UnifiedInput
                 value={newMessage}
-                onChange={setNewMessage}
+                onChange={(value) => {
+                  setNewMessage(value);
+                  handleTyping();
+                }}
                 onSubmit={handleSendMessage}
                 placeholder={`Message ${currentDMUser.username}`}
                 disabled={sending}

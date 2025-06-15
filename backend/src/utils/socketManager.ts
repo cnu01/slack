@@ -157,12 +157,15 @@ class SocketManager {
           
           this.typingUsers.set(`${socket.userId}:${channelId}`, typingInfo);
           
-          // Broadcast typing status to channel
+          // Broadcast typing status to channel with channelId included
           socket.to(`channel:${channelId}`).emit('user_typing', {
             userId: socket.userId,
             username: socket.username,
+            channelId: channelId,
             isTyping: true
           });
+          
+          console.log(`⌨️ User ${socket.username} started typing in channel ${channelId}`);
         }
       });
 
@@ -216,12 +219,15 @@ class SocketManager {
       const typingInfo = this.typingUsers.get(key)!;
       this.typingUsers.delete(key);
       
-      // Broadcast typing stop to channel
+      // Broadcast typing stop to channel with channelId included
       this.io.to(`channel:${channelId}`).emit('user_typing', {
         userId,
         username: typingInfo.username,
+        channelId: channelId,
         isTyping: false
       });
+      
+      console.log(`⌨️ User ${typingInfo.username} stopped typing in channel ${channelId}`);
     }
   }
 

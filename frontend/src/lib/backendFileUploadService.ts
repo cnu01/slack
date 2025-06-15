@@ -12,8 +12,6 @@ export interface FileUploadProgress {
   total: number;
 }
 
-const API_BASE_URL = 'http://localhost:5001/api';
-
 class BackendFileUploadService {
   private maxFileSize = 5 * 1024 * 1024; // 5MB in bytes
 
@@ -41,7 +39,7 @@ class BackendFileUploadService {
   // Upload file to backend
   async uploadFile(
     file: File,
-    onProgress?: (progress: FileUploadProgress) => void
+    _onProgress?: (progress: FileUploadProgress) => void
   ): Promise<UploadedFile> {
     // Validate file
     if (!this.validateFileSize(file)) {
@@ -102,7 +100,7 @@ class BackendFileUploadService {
   // Upload multiple files
   async uploadFiles(
     files: File[],
-    onProgress?: (progress: FileUploadProgress) => void
+    _onProgress?: (progress: FileUploadProgress) => void
   ): Promise<UploadedFile[]> {
     // Validate all files first
     for (const file of files) {

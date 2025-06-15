@@ -1,5 +1,3 @@
-import { parseMentions } from '../utils/mentionUtils';
-
 interface User {
   _id: string;
   username: string;
@@ -23,13 +21,10 @@ interface MessageRendererProps {
 
 export function MessageRenderer({ 
   content, 
-  mentions = [], 
+  mentions: _mentions = [], 
   users = [], 
   isChannel = true 
 }: MessageRendererProps) {
-  // Always parse mentions from content to catch any @mentions
-  const parsedMentions = parseMentions(content, users, isChannel);
-  
   // Render content with mentions highlighted
   let renderedContent = content;
   

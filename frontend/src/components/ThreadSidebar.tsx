@@ -38,7 +38,7 @@ interface ThreadReply {
 }
 
 const ThreadSidebar: React.FC<ThreadSidebarProps> = ({ isOpen, onClose, parentMessage, autoReply, onAutoReplyUsed }) => {
-  const { user, currentChannel, currentWorkspace, workspaceUsers } = useAppStore();
+  const { user, currentChannel, currentWorkspace: _currentWorkspace, workspaceUsers } = useAppStore();
   const [replies, setReplies] = useState<ThreadReply[]>([]);
   const [newReply, setNewReply] = useState('');
   const [loading, setLoading] = useState(false);

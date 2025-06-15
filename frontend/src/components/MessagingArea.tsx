@@ -144,24 +144,6 @@ function MessagingArea() {  const {
     }
   };
 
-  // Pin/Unpin message (currently unused but may be needed for message actions)
-  const handlePinMessage = async (messageId: string) => {
-    try {
-      console.log('📌 Pinning message:', messageId);
-      await apiClient.pinMessage(messageId);
-      console.log('✅ Message pinned successfully');
-      // Refresh messages to update pin status
-      loadMessages();
-      // Refresh pinned items if we're on that tab
-      if (activeTab === 'pinned') {
-        console.log('🔄 Refreshing pinned items after pin');
-        loadPinnedMessages();
-      }
-    } catch (error) {
-      console.error('Failed to pin message:', error);
-    }
-  };
-
   const handleUnpinMessage = async (messageId: string) => {
     try {
       console.log('📌 Unpinning message:', messageId);

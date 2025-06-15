@@ -28,7 +28,7 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:3000", 'http://localhost:3001', "http://127.0.0.1:3000", "http://127.0.0.1:3001"],
+    origin: ["http://localhost:3000", 'http://localhost:3001', "http://127.0.0.1:3000", "http://127.0.0.1:3001",'https://quiet-daffodil-293b8e.netlify.app/'],
     methods: ["GET", "POST"],
     credentials: true
   },
@@ -44,7 +44,7 @@ pineconeService.initializeIndex().catch(console.error);
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: ["http://localhost:3000", 'http://localhost:3001'],
+  origin: ["http://localhost:3000", 'http://localhost:3001','https://quiet-daffodil-293b8e.netlify.app/'],
   credentials: true
 }));
 app.use(morgan('combined'));

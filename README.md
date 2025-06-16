@@ -4,6 +4,18 @@
 
 SlackAI is an advanced Slack-style collaboration platform that combines real-time messaging with AI capabilities to automate replies, analyze message tone, and surface knowledge from across channels. This platform addresses the challenge of buried team knowledge by integrating powerful AI features directly into the messaging experience.
 
+## 🚀 Project Deployment
+
+### 🌐 Frontend
+- **URL:** [https://quiet-daffodil-293b8e.netlify.app](https://quiet-daffodil-293b8e.netlify.app/)
+- **Hosted on:** Netlify
+
+### 🛠️ Backend
+- **URL:** [https://slack-7ln6.onrender.com](https://slack-7ln6.onrender.com)
+- **Hosted on:** Render
+
+---
+
 ## 🎯 Features
 
 ### 💬 Core Communication Features

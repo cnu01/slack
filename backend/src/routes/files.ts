@@ -1,31 +1,13 @@
 import express from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 import { authenticateToken } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
+import { supabaseStorageService } from '../services/supabaseStorageService';
 
 const router = express.Router();
 
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    // Generate unique filename with timestamp
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const extension = path.extname(file.originalname);
-    const baseName = path.basename(file.originalname, extension);
-    cb(null, `${baseName}-${uniqueSuffix}${extension}`);
-  }
-});
+// Configure multer for memory storage (since we're uploading to cloud)
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -67,15 +49,21 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req: Aut
       return;
     }
 
-    const fileUrl = `/api/files/${req.file.filename}`;
+    // Upload to Supabase Storage
+    console.log('🔄 Uploading to Supabase Storage...');
+    const uploadResult = await supabaseStorageService.uploadFile(
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype
+    );
     
     const result = {
       file: {
-        url: fileUrl,
+        url: uploadResult.url,
         name: req.file.originalname,
         size: req.file.size,
         type: req.file.mimetype,
-        path: req.file.path
+        path: uploadResult.path
       }
     };
     
@@ -97,13 +85,27 @@ router.post('/upload-multiple', authenticateToken, upload.array('files', 5), asy
       return;
     }
 
-    const uploadedFiles = files.map(file => ({
-      url: `/api/files/${file.filename}`,
-      name: file.originalname,
-      size: file.size,
-      type: file.mimetype,
-      path: file.path
-    }));
+    console.log(`🔄 Uploading ${files.length} files to Supabase Storage...`);
+    
+    // Upload all files to Supabase Storage
+    const uploadPromises = files.map(async (file) => {
+      const uploadResult = await supabaseStorageService.uploadFile(
+        file.buffer,
+        file.originalname,
+        file.mimetype
+      );
+      
+      return {
+        url: uploadResult.url,
+        name: file.originalname,
+        size: file.size,
+        type: file.mimetype,
+        path: uploadResult.path
+      };
+    });
+
+    const uploadedFiles = await Promise.all(uploadPromises);
+    console.log('✅ All files uploaded successfully');
 
     res.json({ files: uploadedFiles });
   } catch (error) {
@@ -112,37 +114,19 @@ router.post('/upload-multiple', authenticateToken, upload.array('files', 5), asy
   }
 });
 
-// Serve uploaded files
-router.get('/:filename', (req, res): void => {
-  const filename = req.params.filename;
-  const filePath = path.join(uploadsDir, filename);
-  
-  // Check if file exists
-  if (!fs.existsSync(filePath)) {
-    res.status(404).json({ error: 'File not found' });
-    return;
+// Delete file from cloud storage
+router.delete('/:fileUrl', authenticateToken, async (req: AuthRequest, res): Promise<void> => {
+  try {
+    const fileUrl = decodeURIComponent(req.params.fileUrl);
+    console.log('🗑️ Deleting file from Supabase Storage:', fileUrl);
+    
+    await supabaseStorageService.deleteFile(fileUrl);
+    
+    res.json({ message: 'File deleted successfully' });
+  } catch (error) {
+    console.error('❌ File deletion error:', error);
+    res.status(500).json({ error: 'File deletion failed' });
   }
-  
-  // Set appropriate headers
-  const ext = path.extname(filename).toLowerCase();
-  const mimeTypes: { [key: string]: string } = {
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.svg': 'image/svg+xml',
-    '.pdf': 'application/pdf',
-    '.txt': 'text/plain',
-    '.doc': 'application/msword',
-    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  };
-  
-  const mimeType = mimeTypes[ext] || 'application/octet-stream';
-  res.setHeader('Content-Type', mimeType);
-  
-  // Send file
-  res.sendFile(filePath);
 });
 
 export default router;
